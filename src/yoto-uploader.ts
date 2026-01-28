@@ -1,69 +1,53 @@
-import { execSync, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-
-// Use yoto binary: check node_modules first, then global install
-function getYotoCli(): string {
-  if (process.env.YOTO_CLI_PATH) return process.env.YOTO_CLI_PATH;
-
-  const nodeModulesPath = path.join(__dirname, '..', 'node_modules', '@thebestmoshe', 'yoto-cli', 'dist', 'yoto');
-  if (fs.existsSync(nodeModulesPath)) return nodeModulesPath;
-
-  return path.join(process.env.HOME || '', '.local', 'bin', 'yoto');
-}
-const YOTO_CLI = getYotoCli();
+import {
+  getAuthenticatedClient,
+  listPublicIcons,
+  addEntry,
+  createPlaylist,
+  deletePlaylist,
+  listPlaylists,
+  getPlaylist,
+  loadConfig,
+  type YotoClient,
+} from '@lizozom/yoto';
 
 interface YotoIcon {
   mediaId: string;
-  title: string;
+  title?: string;
   publicTags?: string[];
 }
 
-function runYotoCommand(args: string[]): string {
-  try {
-    return execSync(`${YOTO_CLI} ${args.join(' ')}`, { encoding: 'utf-8' });
-  } catch (error: unknown) {
-    const execError = error as { stderr?: string; message?: string };
-    throw new Error(execError.stderr || execError.message || 'Command failed');
-  }
-}
+let cachedIcons: YotoIcon[] | null = null;
 
-export function checkAuth(): boolean {
+export async function checkAuth(): Promise<boolean> {
   try {
-    const output = runYotoCommand(['status']);
-    return output.toLowerCase().includes('logged in') || output.includes('✓');
+    const config = await loadConfig();
+    return !!config?.accessToken;
   } catch {
     return false;
   }
 }
 
-export async function login(): Promise<void> {
-  console.log('Opening Yoto login...');
-  console.log('Follow the instructions in your browser to authenticate.\n');
-
-  return new Promise((resolve, reject) => {
-    const proc = spawn(YOTO_CLI, ['login'], { stdio: 'inherit' });
-    proc.on('close', (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error('Login failed'));
-      }
-    });
-  });
-}
-
-export function getIcons(tag?: string): YotoIcon[] {
-  try {
-    const args = ['icon', 'list', '--json'];
-    if (tag) {
-      args.splice(2, 0, '--tag', tag);
+export async function getIcons(tag?: string): Promise<YotoIcon[]> {
+  if (!cachedIcons) {
+    try {
+      const client = await getAuthenticatedClient();
+      const response = await client.getPublicIcons();
+      cachedIcons = response.displayIcons.map((icon) => ({
+        mediaId: icon.mediaId,
+        title: icon.title,
+        publicTags: icon.publicTags,
+      }));
+    } catch {
+      return [];
     }
-    const output = runYotoCommand(args);
-    return JSON.parse(output) as YotoIcon[];
-  } catch {
-    return [];
   }
+
+  if (tag) {
+    return cachedIcons?.filter(i => i.publicTags?.includes(tag)) || [];
+  }
+  return cachedIcons || [];
 }
 
 export function getRandomIcon(icons: YotoIcon[]): YotoIcon | undefined {
@@ -73,10 +57,8 @@ export function getRandomIcon(icons: YotoIcon[]): YotoIcon | undefined {
 
 export function findIconByName(icons: YotoIcon[], name: string): YotoIcon | undefined {
   const lowerName = name.toLowerCase();
-  // Try exact match first
   let icon = icons.find(i => i.title?.toLowerCase() === lowerName);
   if (icon) return icon;
-  // Try partial match
   icon = icons.find(i => i.title?.toLowerCase().includes(lowerName));
   return icon;
 }
@@ -86,23 +68,28 @@ interface YotoPlaylist {
   title: string;
 }
 
-export function getPlaylists(): YotoPlaylist[] {
+export async function getPlaylists(): Promise<YotoPlaylist[]> {
   try {
-    const output = runYotoCommand(['playlist', 'list', '--json']);
-    return JSON.parse(output) as YotoPlaylist[];
+    const client = await getAuthenticatedClient();
+    const response = await client.listContent();
+    return response.cards.map((card: any) => ({
+      cardId: card.cardId,
+      title: card.title,
+    }));
   } catch {
     return [];
   }
 }
 
-export function findPlaylistByName(name: string): YotoPlaylist | undefined {
-  const playlists = getPlaylists();
+export async function findPlaylistByName(name: string): Promise<YotoPlaylist | undefined> {
+  const playlists = await getPlaylists();
   return playlists.find(p => p.title === name);
 }
 
-export function deletePlaylist(cardId: string): boolean {
+export async function removePlaylist(cardId: string): Promise<boolean> {
   try {
-    runYotoCommand(['playlist', 'delete', cardId]);
+    const client = await getAuthenticatedClient();
+    await client.deleteContent(cardId);
     return true;
   } catch {
     return false;
@@ -114,71 +101,54 @@ export interface CreatePlaylistResult {
   title: string;
 }
 
-export function createPlaylist(title: string, description?: string): CreatePlaylistResult {
-  const args = ['playlist', 'create', `"${title}"`];
-  if (description) {
-    args.push('--description', `"${description}"`);
-  }
+export async function makePlaylist(title: string, description?: string): Promise<CreatePlaylistResult> {
+  const client = await getAuthenticatedClient();
 
-  const output = runYotoCommand(args);
-
-  // Parse output like: "✓ Created playlist: Test\nℹ Card ID: 1S2Zn"
-  const cardIdMatch = output.match(/Card ID:\s*(\S+)/);
-  if (!cardIdMatch) {
-    throw new Error(`Failed to parse card ID from output: ${output}`);
-  }
+  const response = await client.createContent({
+    title,
+    content: {
+      chapters: [],
+      playbackType: 'linear',
+      activity: 'yoto_Player',
+      version: '1',
+      restricted: true,
+    },
+    metadata: {
+      description,
+    },
+  });
 
   return {
-    cardId: cardIdMatch[1],
-    title,
+    cardId: response.card.cardId,
+    title: response.card.title,
   };
 }
 
 export interface AddEntryResult {
   success: boolean;
   title: string;
+  duration?: number;
   error?: string;
 }
 
-export async function addEntry(
+export async function addTrackToPlaylist(
   cardId: string,
   title: string,
   audioPath: string,
   iconId?: string
 ): Promise<AddEntryResult> {
-  return new Promise((resolve) => {
-    // Build command as a shell string with proper escaping
-    const escapedTitle = title.replace(/"/g, '\\"');
-    const escapedPath = audioPath.replace(/"/g, '\\"');
-    let cmd = `${YOTO_CLI} entry add ${cardId} "${escapedTitle}" --file "${escapedPath}"`;
-
-    if (iconId) {
-      // Use yoto:# format for media IDs
-      cmd += ` --icon "yoto:#${iconId}"`;
-    }
-
-    const proc = spawn('sh', ['-c', cmd]);
-
-    let stdout = '';
-    let stderr = '';
-
-    proc.stdout.on('data', (data) => {
-      stdout += data.toString();
-      process.stdout.write(data);
+  try {
+    // Use the addEntry function from yoto-cli which handles upload + transcode + add
+    await addEntry(cardId, title, {
+      file: audioPath,
+      icon: iconId ? `yoto:#${iconId}` : undefined,
     });
 
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    proc.on('close', (code) => {
-      if (code === 0) {
-        resolve({ success: true, title });
-      } else {
-        resolve({ success: false, title, error: stderr || 'Upload failed' });
-      }
-    });
-  });
+    return { success: true, title };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, title, error: message };
+  }
 }
 
 export interface SongInfo {
@@ -199,13 +169,9 @@ export async function uploadPlaylist(options: UploadPlaylistOptions): Promise<vo
 
   // Check authentication
   console.log('Checking Yoto authentication...');
-  if (!checkAuth()) {
-    console.log('Not logged in. Starting login flow...\n');
-    await login();
-
-    if (!checkAuth()) {
-      throw new Error('Authentication failed. Please try again.');
-    }
+  if (!await checkAuth()) {
+    console.log('\n⚠ Not logged in. Please run: yoto login\n');
+    throw new Error('Authentication required. Run yoto login first.');
   }
   console.log('✓ Authenticated\n');
 
@@ -220,10 +186,10 @@ export async function uploadPlaylist(options: UploadPlaylistOptions): Promise<vo
 
   console.log(`Found ${files.length} tracks to upload\n`);
 
-  // Fetch icons - all icons for name lookup, music icons for random fallback
+  // Fetch icons
   console.log('Fetching icons...');
-  const allIcons = getIcons();
-  const musicIcons = getIcons('music');
+  const allIcons = await getIcons();
+  const musicIcons = await getIcons('music');
   if (allIcons.length > 0) {
     console.log(`✓ Found ${allIcons.length} icons (${musicIcons.length} music)\n`);
   } else {
@@ -232,10 +198,10 @@ export async function uploadPlaylist(options: UploadPlaylistOptions): Promise<vo
 
   // Check for existing playlist with same name
   console.log(`Checking for existing playlist: ${playlistName}`);
-  const existingPlaylist = findPlaylistByName(playlistName);
+  const existingPlaylist = await findPlaylistByName(playlistName);
   if (existingPlaylist) {
     console.log(`  Found existing playlist (ID: ${existingPlaylist.cardId}), deleting...`);
-    if (deletePlaylist(existingPlaylist.cardId)) {
+    if (await removePlaylist(existingPlaylist.cardId)) {
       console.log(`  ✓ Deleted old playlist\n`);
     } else {
       console.log(`  ⚠ Failed to delete old playlist, creating new one anyway\n`);
@@ -246,7 +212,7 @@ export async function uploadPlaylist(options: UploadPlaylistOptions): Promise<vo
 
   // Create playlist
   console.log(`Creating playlist: ${playlistName}`);
-  const playlist = createPlaylist(playlistName, description);
+  const playlist = await makePlaylist(playlistName, description);
   console.log(`✓ Created playlist (ID: ${playlist.cardId})\n`);
 
   // Upload each track
@@ -259,7 +225,7 @@ export async function uploadPlaylist(options: UploadPlaylistOptions): Promise<vo
     const filePath = path.join(outputDir, file);
     // Parse filename like "01. Artist - Song Name.opus" or "01-old-format.mp3"
     const title = file
-      .replace(/^\d+[\.\-]\s*/, '')  // Remove track number prefix (01. or 01-)
+      .replace(/^\d+[\.\-]\s*/, '')  // Remove track number prefix
       .replace(/\.(opus|mp3)$/, ''); // Remove extension
 
     // Get icon: use specified icon from CSV, or pick random
@@ -281,7 +247,7 @@ export async function uploadPlaylist(options: UploadPlaylistOptions): Promise<vo
 
     console.log(`[${successful + failed + 1}/${files.length}] ${title}${iconInfo}`);
 
-    const result = await addEntry(playlist.cardId, title, filePath, icon?.mediaId);
+    const result = await addTrackToPlaylist(playlist.cardId, title, filePath, icon?.mediaId);
 
     if (result.success) {
       successful++;
