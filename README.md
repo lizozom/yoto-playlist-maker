@@ -25,11 +25,11 @@ npm run check
 # 3) Login to Yoto (one-time)
 npx @lizozom/yoto login
 
-# 4) Download songs
-npm start -- "playlists/My Playlist.csv"
+# 4) Download songs (using included example)
+npm start -- "playlists/Example Playlist.csv"
 
 # 5) Download and upload to Yoto
-npm start -- "playlists/My Playlist.csv" --upload
+npm start -- "playlists/Example Playlist.csv" --upload
 ```
 
 ---

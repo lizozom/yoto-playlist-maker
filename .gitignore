@@ -4,4 +4,5 @@ output/
 *.log
 .DS_Store
 tsconfig.json
-playlists/
+playlists/*
+!playlists/Example Playlist.csv
