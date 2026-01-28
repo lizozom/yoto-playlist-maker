@@ -1,46 +1,58 @@
+```
+██╗   ██╗ ██████╗ ████████╗ ██████╗
+╚██╗ ██╔╝██╔═══██╗╚══██╔══╝██╔═══██╗
+ ╚████╔╝ ██║   ██║   ██║   ██║   ██║
+  ╚██╔╝  ██║   ██║   ██║   ██║   ██║
+	██║   ╚██████╔╝   ██║   ╚██████╔╝
+	╚═╝    ╚═════╝    ╚═╝    ╚═════╝
+```
+
 # Yoto Playlist Maker
 
-Create custom playlists for Yoto players from YouTube. Enter song names in a CSV file, and this tool downloads the audio and uploads it to your Yoto account.
+Create beautiful, custom playlists for Yoto players from YouTube. Drop a CSV in `playlists/`, run one command, and your tracks download and upload to your Yoto account.
 
-## Quick Start
+---
+
+## ✨ Quick Start
 
 ```bash
-# 1. Install dependencies
+# 1) Install dependencies
 npm install
 
-# 2. Install external tools
-npm run check  # Shows what's missing and how to install
+# 2) Install external tools
+npm run check
 
-# 3. Create a playlist CSV file
-# 4. Download songs
+# 3) Download songs
 npm start -- "playlists/My Playlist.csv"
 
-# 5. Upload to Yoto
+# 4) Upload to Yoto
 npm start -- "playlists/My Playlist.csv" --upload
 ```
 
-## Setup
+---
 
-### 1. Install Node.js Dependencies
+## 📦 Requirements
 
-```bash
-npm install
-```
+You’ll need these installed on your system:
 
-### 2. Install External Tools
-
-The following tools must be installed on your system:
-
-| Tool | Purpose | Install Command |
-|------|---------|-----------------|
+| Tool | Why you need it | Install command |
+|------|------------------|-----------------|
 | **yt-dlp** | Downloads audio from YouTube | `pipx install yt-dlp` |
-| **deno** | Required by yt-dlp | `curl -fsSL https://deno.land/install.sh \| sh` |
+| **deno** | Required by `yt-dlp` | `curl -fsSL https://deno.land/install.sh \| sh` |
 | **ffmpeg** | Converts audio to MP3 | `sudo apt install ffmpeg` |
 | **yoto-cli** | Uploads to Yoto | `curl -fsSL https://raw.githubusercontent.com/TheBestMoshe/yoto-cli/main/install.sh \| bash` |
 
-Run `npm run check` to verify all tools are installed.
+Then run:
 
-### 3. Add deno to PATH
+```bash
+npm run check
+```
+
+---
+
+## 🔐 One-Time Setup
+
+### Add `deno` to your PATH
 
 Add this to your `~/.bashrc` or `~/.zshrc`:
 
@@ -48,19 +60,17 @@ Add this to your `~/.bashrc` or `~/.zshrc`:
 export PATH="$HOME/.deno/bin:$PATH"
 ```
 
-### 4. Login to Yoto (one-time)
+### Log into Yoto
 
 ```bash
 ~/.local/bin/yoto login
 ```
 
-Follow the instructions to authenticate with your Yoto account.
+---
 
-## Creating a Playlist
+## 🧾 Create a Playlist CSV
 
-### 1. Create a CSV File
-
-Create a file in the `playlists/` folder. The filename becomes the playlist name.
+Create a file in `playlists/`. The filename becomes your playlist name.
 
 **Example: `playlists/Kids Party.csv`**
 
@@ -72,21 +82,28 @@ Happy,Pharrell Williams,
 Can't Stop the Feeling,Justin Timberlake,dance
 ```
 
-| Column | Required | Description |
-|--------|----------|-------------|
-| `song_name` | Yes | The song title |
-| `artist` | No | Helps find the correct version on YouTube |
-| `icon` | No | Icon name from Yoto's library (random music icon if not specified) |
+| Column | Required | What it does |
+|--------|----------|--------------|
+| `song_name` | ✅ | Song title |
+| `artist` | Optional | Helps pick the right version on YouTube |
+| `icon` | Optional | Yoto icon name (random music icon if blank) |
 
-To see available icons, run: `~/.local/bin/yoto icon list`
+List available icons:
 
-### 2. Download Songs
+```bash
+~/.local/bin/yoto icon list
+```
+
+---
+
+## 🎶 Download Songs
 
 ```bash
 npm start -- "playlists/Kids Party.csv"
 ```
 
-Songs are saved to `output/Kids Party/` with the format:
+Files land in `output/Kids Party/` as:
+
 ```
 01. Pinkfong - Baby Shark.mp3
 02. Frozen - Let It Go.mp3
@@ -94,59 +111,58 @@ Songs are saved to `output/Kids Party/` with the format:
 04. Justin Timberlake - Can't Stop the Feeling.mp3
 ```
 
-### 3. Upload to Yoto
+---
+
+## ☁️ Upload to Yoto
 
 ```bash
 npm start -- "playlists/Kids Party.csv" --upload
 ```
 
-Or upload only (if songs already downloaded):
+Already downloaded? Upload only:
 
 ```bash
 npm run upload -- "playlists/Kids Party.csv"
 ```
 
-Each song uses the icon specified in the CSV, or gets a random music icon if none is specified.
+**Note:** If a playlist with the same name already exists, it’s deleted and replaced.
 
-**Note:** If a playlist with the same name already exists, it will be deleted and replaced with the new version.
+---
 
-## Commands
+## 🧰 Commands
 
 | Command | Description |
 |---------|-------------|
 | `npm start -- <csv>` | Download songs only |
-| `npm start -- <csv> --upload` | Download and upload to Yoto |
-| `npm run upload -- <csv>` | Upload only (songs must exist) |
-| `npm run check` | Verify all dependencies installed |
+| `npm start -- <csv> --upload` | Download + upload |
+| `npm run upload -- <csv>` | Upload only (songs already downloaded) |
+| `npm run check` | Verify dependencies |
 
-## Troubleshooting
+---
 
-### "HTTP Error 403: Forbidden" when downloading
+## 🛠️ Troubleshooting
 
-YouTube sometimes blocks requests. Just re-run the command - it will skip already downloaded songs and retry the failed ones.
+**403 Forbidden from YouTube**
+- Re-run the command. Existing files are skipped, failed ones retry.
 
-### Songs download but some fail
+**Some songs failed**
+- Run the same command again to retry missing tracks.
 
-Run the same command again. The tool skips existing files and only downloads missing ones.
+**“Not logged in”**
+- Run `~/.local/bin/yoto login`.
 
-### "Not logged in" error
+**`deno` not found**
+- Ensure PATH includes `~/.deno/bin`.
 
-Run `~/.local/bin/yoto login` to authenticate with your Yoto account.
+---
 
-### deno not found
-
-Make sure deno is in your PATH:
-```bash
-export PATH="$HOME/.deno/bin:$PATH"
-```
-
-## File Structure
+## 🗂️ Project Layout
 
 ```
 yoto-playlist-maker/
-├── playlists/           # Put your CSV files here
+├── playlists/           # Your CSVs
 │   └── My Playlist.csv
-├── output/              # Downloaded songs go here
+├── output/              # Downloaded audio
 │   └── My Playlist/
 │       ├── 01. Artist - Song.mp3
 │       └── ...
@@ -154,7 +170,9 @@ yoto-playlist-maker/
 └── package.json
 ```
 
-## Credits
+---
 
-- [yoto-cli](https://github.com/TheBestMoshe/yoto-cli) by TheBestMoshe - Yoto API integration
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - YouTube audio download
+## 🙌 Credits
+
+- [yoto-cli](https://github.com/TheBestMoshe/yoto-cli) by TheBestMoshe
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
