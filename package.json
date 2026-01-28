@@ -1,0 +1,21 @@
+{
+  "name": "yoto-playlist-maker",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "check": "ts-node src/check-deps.ts"
+  },
+  "keywords": ["yoto", "playlist", "youtube", "audio"],
+  "author": "",
+  "license": "ISC",
+  "description": "Create custom playlists for Yoto players from YouTube",
+  "dependencies": {
+    "@types/node": "^25.0.10",
+    "csv-parse": "^6.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
