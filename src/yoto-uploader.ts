@@ -2,7 +2,16 @@ import { execSync, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const YOTO_CLI = process.env.YOTO_CLI_PATH || `${process.env.HOME}/.local/bin/yoto`;
+// Use yoto binary: check node_modules first, then global install
+function getYotoCli(): string {
+  if (process.env.YOTO_CLI_PATH) return process.env.YOTO_CLI_PATH;
+
+  const nodeModulesPath = path.join(__dirname, '..', 'node_modules', '@thebestmoshe', 'yoto-cli', 'dist', 'yoto');
+  if (fs.existsSync(nodeModulesPath)) return nodeModulesPath;
+
+  return path.join(process.env.HOME || '', '.local', 'bin', 'yoto');
+}
+const YOTO_CLI = getYotoCli();
 
 interface YotoIcon {
   mediaId: string;
@@ -200,13 +209,13 @@ export async function uploadPlaylist(options: UploadPlaylistOptions): Promise<vo
   }
   console.log('✓ Authenticated\n');
 
-  // Get list of MP3 files
+  // Get list of audio files (opus or mp3)
   const files = fs.readdirSync(outputDir)
-    .filter(f => f.endsWith('.mp3'))
+    .filter(f => f.endsWith('.opus') || f.endsWith('.mp3'))
     .sort();
 
   if (files.length === 0) {
-    throw new Error(`No MP3 files found in ${outputDir}`);
+    throw new Error(`No audio files found in ${outputDir}`);
   }
 
   console.log(`Found ${files.length} tracks to upload\n`);
@@ -248,10 +257,10 @@ export async function uploadPlaylist(options: UploadPlaylistOptions): Promise<vo
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const filePath = path.join(outputDir, file);
-    // Parse filename like "01. Artist - Song Name.mp3" or "01-old-format.mp3"
+    // Parse filename like "01. Artist - Song Name.opus" or "01-old-format.mp3"
     const title = file
       .replace(/^\d+[\.\-]\s*/, '')  // Remove track number prefix (01. or 01-)
-      .replace(/\.mp3$/, '');        // Remove extension
+      .replace(/\.(opus|mp3)$/, ''); // Remove extension
 
     // Get icon: use specified icon from CSV, or pick random
     const songInfo = songs?.[i];

@@ -7,7 +7,8 @@
     "upload": "ts-node src/index.ts --upload-only",
     "build": "tsc",
     "dev": "ts-node src/index.ts",
-    "check": "ts-node src/check-deps.ts"
+    "check": "ts-node src/check-deps.ts",
+    "postinstall": "echo '\\n📦 yoto-cli needs to be built separately. See CLAUDE.md for instructions.\\n'"
   },
   "keywords": [
     "yoto",
@@ -19,7 +20,7 @@
   "license": "ISC",
   "description": "Create custom playlists for Yoto players from YouTube",
   "dependencies": {
-    "@thebestmoshe/yoto-cli": "github:TheBestMoshe/yoto-cli",
+    "@thebestmoshe/yoto-cli": "github:lizozom/yoto-cli#fix-encoding",
     "@types/node": "^25.0.10",
     "csv-parse": "^6.1.0",
     "ts-node": "^10.9.2",

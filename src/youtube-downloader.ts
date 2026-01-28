@@ -23,12 +23,19 @@ function sanitizeFilename(name: string): string {
     .substring(0, 80);
 }
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 2000;
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export async function downloadSong(
   searchQuery: string,
   songName: string,
   options: DownloadOptions
 ): Promise<DownloadResult> {
-  const { outputDir, trackNumber, artist, bitrate = 192 } = options;
+  const { outputDir, trackNumber, artist } = options;
 
   // Ensure output directory exists
   if (!fs.existsSync(outputDir)) {
@@ -51,58 +58,79 @@ export async function downloadSong(
     };
   }
 
-  return new Promise((resolve) => {
-    const args = [
-      `ytsearch1:${searchQuery}`,
-      '--extract-audio',
-      '--audio-format', 'mp3',
-      '--audio-quality', `${bitrate}K`,
-      '--postprocessor-args', 'ffmpeg:-ar 44100 -ac 2 -b:a 192k -map_metadata -1',  // 44.1kHz, stereo, CBR 192k, no metadata
-      '--output', outputTemplate,
-      '--no-playlist',
-      '--quiet',
-      '--progress',
-    ];
+  // Retry loop
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 1) {
+      console.log(`  ⟳ Retry ${attempt}/${MAX_RETRIES}...`);
+      await sleep(RETRY_DELAY_MS);
+    }
 
-    console.log(`  Downloading: ${searchQuery}`);
+    const result = await new Promise<DownloadResult>((resolve) => {
+      // Simple MP3 download - Yoto server handles transcoding
+      const args = [
+        `ytsearch1:${searchQuery}`,
+        '--extract-audio',
+        '--audio-format', 'mp3',
+        '--audio-quality', '192K',
+        '--output', outputTemplate,
+        '--no-playlist',
+        '--quiet',
+        '--progress',
+      ];
 
-    const process = spawn('yt-dlp', args);
+      console.log(`  Downloading: ${searchQuery}`);
 
-    let stderr = '';
+      const proc = spawn('yt-dlp', args);
 
-    process.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
+      let stderr = '';
 
-    process.stdout.on('data', (data) => {
-      const line = data.toString().trim();
-      if (line) {
-        console.log(`    ${line}`);
-      }
-    });
+      proc.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
 
-    process.on('close', (code) => {
-      if (code === 0) {
-        const expectedFile = outputTemplate.replace('.%(ext)s', '.mp3');
-        resolve({
-          success: true,
-          filename: path.basename(expectedFile),
-        });
-      } else {
+      proc.stdout.on('data', (data) => {
+        const line = data.toString().trim();
+        if (line) {
+          console.log(`    ${line}`);
+        }
+      });
+
+      proc.on('close', (code) => {
+        if (code === 0) {
+          const expectedFile = outputTemplate.replace('.%(ext)s', '.mp3');
+          resolve({
+            success: true,
+            filename: path.basename(expectedFile),
+          });
+        } else {
+          resolve({
+            success: false,
+            error: stderr || `yt-dlp exited with code ${code}`,
+          });
+        }
+      });
+
+      proc.on('error', (err) => {
         resolve({
           success: false,
-          error: stderr || `yt-dlp exited with code ${code}`,
+          error: `Failed to spawn yt-dlp: ${err.message}`,
         });
-      }
-    });
-
-    process.on('error', (err) => {
-      resolve({
-        success: false,
-        error: `Failed to spawn yt-dlp: ${err.message}`,
       });
     });
-  });
+
+    if (result.success) {
+      return result;
+    }
+
+    // Only retry on 403 errors (YouTube rate limiting)
+    if (attempt < MAX_RETRIES && result.error?.includes('403')) {
+      console.log(`  ⚠ Download failed, will retry...`);
+    } else {
+      return result;
+    }
+  }
+
+  return { success: false, error: 'Max retries exceeded' };
 }
 
 export async function downloadPlaylist(

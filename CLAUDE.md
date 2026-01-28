@@ -1,6 +1,6 @@
 # Yoto Playlist Maker
 
-A local Node.js CLI tool for creating custom playlists for Yoto players. Works alongside [yoto-cli](https://github.com/TheBestMoshe/yoto-cli) to streamline the playlist creation workflow.
+A local Node.js CLI tool for creating custom playlists for Yoto players. Works alongside [yoto-cli](https://github.com/lizozom/yoto-cli) (fork with encoding fixes) to streamline the playlist creation workflow.
 
 ## Workflow
 
@@ -35,6 +35,8 @@ yoto-playlist-maker/
 | yt-dlp | YouTube audio download | Yes |
 | deno | JavaScript runtime for yt-dlp | Yes |
 | ffmpeg | Audio conversion to MP3 | Yes |
+| bun | Build yoto-cli | Yes |
+| yoto-cli | Upload to Yoto | Yes |
 
 ### Installation
 
@@ -52,7 +54,20 @@ curl -fsSL https://deno.land/install.sh | sh
 sudo apt install ffmpeg  # Ubuntu/Debian
 # Or: brew install ffmpeg (macOS)
 
-# 4. Install Node.js dependencies
+# 4. Install bun (required to build yoto-cli)
+curl -fsSL https://bun.sh/install | bash
+# Add to PATH: export PATH="$HOME/.bun/bin:$PATH"
+
+# 5. Install yoto-cli (use the fork with opus/format fixes)
+git clone https://github.com/lizozom/yoto-cli.git
+cd yoto-cli
+git checkout fix-encoding
+bun install
+bun run build
+cp dist/yoto ~/.local/bin/yoto
+cd ..
+
+# 6. Install Node.js dependencies
 npm install
 ```
 
@@ -67,20 +82,24 @@ npm run check  # Verifies all external dependencies
 Filename: `{playlist-name}.csv`
 
 ```csv
-song_name,artist
-Twinkle Twinkle Little Star,
-The Wheels on the Bus,Super Simple Songs
-Baby Shark,Pinkfong
+song_name,artist,icon
+Twinkle Twinkle Little Star,,star
+The Wheels on the Bus,Super Simple Songs,
+Baby Shark,Pinkfong,fish
 ```
 
 - `song_name` (required): Name of the song to search on YouTube
 - `artist` (optional): Artist name for more accurate search results
+- `icon` (optional): Icon name to display on Yoto (matched against Yoto's icon library)
 
 ## Usage
 
 ```bash
-# Process a single playlist
+# Download songs only
 npm start -- playlists/bedtime-songs.csv
+
+# Download and upload to Yoto
+npm start -- playlists/bedtime-songs.csv --upload
 
 # Process all CSVs in playlists folder
 npm start -- --all
@@ -120,14 +139,21 @@ npm run dev      # Run with ts-node (development)
 
 ## Integration with yoto-cli
 
-After downloading songs with this tool, use yoto-cli to upload:
+This tool has built-in integration with yoto-cli. Use the `--upload` flag to automatically upload after downloading:
 
 ```bash
-# Install yoto-cli
-npm install -g yoto-cli
+npm start -- playlists/bedtime-songs.csv --upload
+```
 
-# Upload playlist to Yoto card
-yoto-cli upload ./output/bedtime-songs/
+The tool will:
+1. Download songs from YouTube as MP3
+2. Create a playlist on your Yoto account
+3. Upload and transcode each track (Yoto server handles opus conversion)
+4. Assign icons from the CSV or random music icons
+
+**Note:** You must be logged in to yoto-cli first:
+```bash
+yoto login
 ```
 
 ## Configuration
@@ -150,6 +176,6 @@ COVER_API_KEY=
 - [ ] Cover image generation for each song
 - [ ] Playlist cover image
 - [ ] Interactive mode for confirming YouTube search results
-- [ ] Retry failed downloads
+- [x] Retry failed downloads (3 retries with 2s delay)
 - [ ] Progress bar for batch downloads
-- [ ] Direct integration with yoto-cli
+- [x] Direct integration with yoto-cli (--upload flag)
