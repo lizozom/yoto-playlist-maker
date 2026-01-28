@@ -1,13 +1,13 @@
 # Yoto Playlist Maker
 
-A local Node.js CLI tool for creating custom playlists for Yoto players. Works alongside [yoto-cli](https://github.com/lizozom/yoto-cli) (fork with encoding fixes) to streamline the playlist creation workflow.
+A local Node.js CLI tool for creating custom playlists for Yoto players. Downloads songs from YouTube and uploads them to your Yoto account using the [@lizozom/yoto](https://www.npmjs.com/package/@lizozom/yoto) package.
 
 ## Workflow
 
 1. Create a CSV file with song names (filename becomes playlist name)
 2. Run this script to download songs from YouTube
 3. (Future) Generate cover images for each song
-4. Use yoto-cli to upload the playlist to your Yoto card
+4. Use the `--upload` flag to upload the playlist to your Yoto account
 
 ## Project Structure
 
@@ -17,6 +17,7 @@ yoto-playlist-maker/
 │   ├── index.ts              # Main entry point
 │   ├── csv-parser.ts         # Parse CSV input files
 │   ├── youtube-downloader.ts # Download audio from YouTube
+│   ├── yoto-uploader.ts      # Upload to Yoto account
 │   └── cover-generator.ts    # (Future) Generate cover images
 ├── playlists/                # Input CSV files go here
 ├── output/                   # Downloaded songs organized by playlist
@@ -35,8 +36,6 @@ yoto-playlist-maker/
 | yt-dlp | YouTube audio download | Yes |
 | deno | JavaScript runtime for yt-dlp | Yes |
 | ffmpeg | Audio conversion to MP3 | Yes |
-| bun | Build yoto-cli | Yes |
-| yoto-cli | Upload to Yoto | Yes |
 
 ### Installation
 
@@ -46,29 +45,18 @@ pipx install yt-dlp
 # Or: brew install yt-dlp (macOS)
 # Or: sudo apt install yt-dlp (Ubuntu/Debian)
 
-# 2. Install deno (required by yt-dlp for YouTube)
-curl -fsSL https://deno.land/install.sh | sh
-# Add to PATH: export PATH="$HOME/.deno/bin:$PATH"
+# 2. Install deno to /usr/local/bin (no PATH update needed)
+curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sudo -E sh
 
 # 3. Install ffmpeg
 sudo apt install ffmpeg  # Ubuntu/Debian
 # Or: brew install ffmpeg (macOS)
 
-# 4. Install bun (required to build yoto-cli)
-curl -fsSL https://bun.sh/install | bash
-# Add to PATH: export PATH="$HOME/.bun/bin:$PATH"
-
-# 5. Install yoto-cli (use the fork with opus/format fixes)
-git clone https://github.com/lizozom/yoto-cli.git
-cd yoto-cli
-git checkout fix-encoding
-bun install
-bun run build
-cp dist/yoto ~/.local/bin/yoto
-cd ..
-
-# 6. Install Node.js dependencies
+# 4. Install Node.js dependencies
 npm install
+
+# 5. Login to Yoto (one-time, for upload feature)
+npx @lizozom/yoto login
 ```
 
 ### Verify Installation
@@ -101,6 +89,9 @@ npm start -- playlists/bedtime-songs.csv
 # Download and upload to Yoto
 npm start -- playlists/bedtime-songs.csv --upload
 
+# Upload only (songs already downloaded)
+npm run upload -- playlists/bedtime-songs.csv
+
 # Process all CSVs in playlists folder
 npm start -- --all
 ```
@@ -125,6 +116,7 @@ output/
 - **Language**: TypeScript
 - **YouTube Download**: yt-dlp (with deno runtime)
 - **CSV Parsing**: csv-parse
+- **Yoto Upload**: @lizozom/yoto package
 - **Cover Generation**: (Future) AI image generation API
 
 ## Development Commands
@@ -137,24 +129,15 @@ npm start        # Run the CLI
 npm run dev      # Run with ts-node (development)
 ```
 
-## Integration with yoto-cli
+## Authentication
 
-This tool has built-in integration with yoto-cli. Use the `--upload` flag to automatically upload after downloading:
+The tool uses the `@lizozom/yoto` npm package for Yoto API access. Authentication is handled via:
 
 ```bash
-npm start -- playlists/bedtime-songs.csv --upload
+npx @lizozom/yoto login
 ```
 
-The tool will:
-1. Download songs from YouTube as MP3
-2. Create a playlist on your Yoto account
-3. Upload and transcode each track (Yoto server handles opus conversion)
-4. Assign icons from the CSV or random music icons
-
-**Note:** You must be logged in to yoto-cli first:
-```bash
-yoto login
-```
+This stores credentials locally in `~/.yoto/config.json`. The `checkAuth()` function in `yoto-uploader.ts` verifies authentication before uploads.
 
 ## Configuration
 
@@ -178,4 +161,4 @@ COVER_API_KEY=
 - [ ] Interactive mode for confirming YouTube search results
 - [x] Retry failed downloads (3 retries with 2s delay)
 - [ ] Progress bar for batch downloads
-- [x] Direct integration with yoto-cli (--upload flag)
+- [x] Direct integration with Yoto API (--upload flag)
