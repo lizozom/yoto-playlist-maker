@@ -4,15 +4,22 @@
   "main": "dist/index.js",
   "scripts": {
     "start": "ts-node src/index.ts",
+    "upload": "ts-node src/index.ts --upload-only",
     "build": "tsc",
     "dev": "ts-node src/index.ts",
     "check": "ts-node src/check-deps.ts"
   },
-  "keywords": ["yoto", "playlist", "youtube", "audio"],
+  "keywords": [
+    "yoto",
+    "playlist",
+    "youtube",
+    "audio"
+  ],
   "author": "",
   "license": "ISC",
   "description": "Create custom playlists for Yoto players from YouTube",
   "dependencies": {
+    "@thebestmoshe/yoto-cli": "github:TheBestMoshe/yoto-cli",
     "@types/node": "^25.0.10",
     "csv-parse": "^6.1.0",
     "ts-node": "^10.9.2",

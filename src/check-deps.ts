@@ -22,6 +22,11 @@ const dependencies: Dependency[] = [
     command: 'ffmpeg -version',
     installHint: 'sudo apt install ffmpeg',
   },
+  {
+    name: 'yoto-cli',
+    command: `${process.env.HOME}/.local/bin/yoto --version`,
+    installHint: 'curl -fsSL https://raw.githubusercontent.com/TheBestMoshe/yoto-cli/main/install.sh | bash',
+  },
 ];
 
 function checkDependency(dep: Dependency): boolean {

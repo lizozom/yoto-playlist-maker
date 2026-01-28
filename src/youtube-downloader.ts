@@ -5,6 +5,7 @@ import * as fs from 'fs';
 export interface DownloadOptions {
   outputDir: string;
   trackNumber: number;
+  artist?: string;
   bitrate?: number;
 }
 
@@ -17,11 +18,9 @@ export interface DownloadResult {
 
 function sanitizeFilename(name: string): string {
   return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .substring(0, 50);
+    .replace(/[\/\\:*?"<>|]/g, '') // Remove filesystem-unsafe chars
+    .trim()
+    .substring(0, 80);
 }
 
 export async function downloadSong(
@@ -29,7 +28,7 @@ export async function downloadSong(
   songName: string,
   options: DownloadOptions
 ): Promise<DownloadResult> {
-  const { outputDir, trackNumber, bitrate = 192 } = options;
+  const { outputDir, trackNumber, artist, bitrate = 192 } = options;
 
   // Ensure output directory exists
   if (!fs.existsSync(outputDir)) {
@@ -37,9 +36,11 @@ export async function downloadSong(
   }
 
   const paddedNumber = String(trackNumber).padStart(2, '0');
-  const sanitizedName = sanitizeFilename(songName);
-  const expectedFile = path.join(outputDir, `${paddedNumber}-${sanitizedName}.mp3`);
-  const outputTemplate = path.join(outputDir, `${paddedNumber}-${sanitizedName}.%(ext)s`);
+  // Format: "01. Artist - Song Name.mp3" or "01. Song Name.mp3" if no artist
+  const displayName = artist ? `${artist} - ${songName}` : songName;
+  const sanitizedName = sanitizeFilename(displayName);
+  const expectedFile = path.join(outputDir, `${paddedNumber}. ${sanitizedName}.mp3`);
+  const outputTemplate = path.join(outputDir, `${paddedNumber}. ${sanitizedName}.%(ext)s`);
 
   // Skip if file already exists
   if (fs.existsSync(expectedFile)) {
@@ -56,6 +57,7 @@ export async function downloadSong(
       '--extract-audio',
       '--audio-format', 'mp3',
       '--audio-quality', `${bitrate}K`,
+      '--postprocessor-args', 'ffmpeg:-ar 44100 -ac 2 -b:a 192k -map_metadata -1',  // 44.1kHz, stereo, CBR 192k, no metadata
       '--output', outputTemplate,
       '--no-playlist',
       '--quiet',
@@ -104,7 +106,7 @@ export async function downloadSong(
 }
 
 export async function downloadPlaylist(
-  songs: Array<{ name: string; searchQuery: string }>,
+  songs: Array<{ name: string; artist?: string; searchQuery: string }>,
   outputDir: string
 ): Promise<{ successful: number; failed: number; skipped: number; results: DownloadResult[] }> {
   const results: DownloadResult[] = [];
@@ -114,11 +116,13 @@ export async function downloadPlaylist(
 
   for (let i = 0; i < songs.length; i++) {
     const song = songs[i];
-    console.log(`\n[${i + 1}/${songs.length}] ${song.name}`);
+    const displayName = song.artist ? `${song.artist} - ${song.name}` : song.name;
+    console.log(`\n[${i + 1}/${songs.length}] ${displayName}`);
 
     const result = await downloadSong(song.searchQuery, song.name, {
       outputDir,
       trackNumber: i + 1,
+      artist: song.artist,
     });
 
     results.push(result);

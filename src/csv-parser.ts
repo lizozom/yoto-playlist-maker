@@ -5,6 +5,7 @@ import * as path from 'path';
 export interface Song {
   name: string;
   artist?: string;
+  icon?: string;
   searchQuery: string;
 }
 
@@ -32,6 +33,7 @@ export function parsePlaylistCSV(csvPath: string): Playlist {
   const songs: Song[] = records.map((record) => {
     const name = record.song_name || record.name || record.title || '';
     const artist = record.artist || '';
+    const icon = record.icon || '';
 
     if (!name) {
       throw new Error('Each row must have a song_name, name, or title column');
@@ -42,6 +44,7 @@ export function parsePlaylistCSV(csvPath: string): Playlist {
     return {
       name,
       artist: artist || undefined,
+      icon: icon || undefined,
       searchQuery,
     };
   });
