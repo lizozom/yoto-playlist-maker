@@ -1,8 +1,17 @@
 node_modules/
 dist/
 output/
+release/
 *.log
 .DS_Store
-tsconfig.json
 playlists/*
 !playlists/Example Playlist.csv
+
+# Electron
+*.dmg
+*.AppImage
+*.snap
+*.deb
+*.rpm
+*.exe
+*.msi

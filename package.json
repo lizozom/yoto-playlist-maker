@@ -1,28 +1,90 @@
 {
   "name": "yoto-playlist-maker",
   "version": "1.0.0",
-  "main": "dist/index.js",
+  "main": "dist/electron/main.js",
   "scripts": {
     "start": "ts-node src/index.ts",
     "upload": "ts-node src/index.ts --upload-only",
     "build": "tsc",
     "dev": "ts-node src/index.ts",
-    "check": "ts-node src/check-deps.ts"
+    "check": "ts-node src/check-deps.ts",
+    "electron:dev": "concurrently \"vite\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "vite build && tsc -p tsconfig.electron.json",
+    "electron:start": "npm run electron:build && electron .",
+    "electron:pack": "npm run electron:build && electron-builder --dir",
+    "electron:dist": "npm run electron:build && electron-builder"
   },
   "keywords": [
     "yoto",
     "playlist",
     "youtube",
-    "audio"
+    "audio",
+    "electron"
   ],
   "author": "",
   "license": "ISC",
   "description": "Create custom playlists for Yoto players from YouTube",
   "dependencies": {
     "@lizozom/yoto": "^0.2.1",
-    "@types/node": "^25.0.10",
     "csv-parse": "^6.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.17",
+    "concurrently": "^8.2.2",
+    "electron": "^28.2.0",
+    "electron-builder": "^24.9.1",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^5.1.0",
+    "wait-on": "^9.0.3"
+  },
+  "build": {
+    "appId": "com.yoto.playlist-maker",
+    "productName": "Yoto Playlist Maker",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/${os}",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.music",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Audio"
+    }
   }
 }
