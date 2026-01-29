@@ -49,11 +49,26 @@ export async function downloadSong(
   const expectedFile = path.join(outputDir, `${paddedNumber}. ${sanitizedName}.mp3`);
   const outputTemplate = path.join(outputDir, `${paddedNumber}. ${sanitizedName}.%(ext)s`);
 
-  // Skip if file already exists
+  // Skip if file already exists (exact match)
   if (fs.existsSync(expectedFile)) {
     return {
       success: true,
       filename: path.basename(expectedFile),
+      skipped: true,
+    };
+  }
+
+  // Also check if any file in output folder contains this song name (fuzzy match)
+  const sanitizedSongName = sanitizeFilename(songName).toLowerCase();
+  const existingFiles = fs.existsSync(outputDir) ? fs.readdirSync(outputDir) : [];
+  const matchingFile = existingFiles.find(f =>
+    f.endsWith('.mp3') && f.toLowerCase().includes(sanitizedSongName)
+  );
+
+  if (matchingFile) {
+    return {
+      success: true,
+      filename: matchingFile,
       skipped: true,
     };
   }
@@ -66,7 +81,7 @@ export async function downloadSong(
     }
 
     const result = await new Promise<DownloadResult>((resolve) => {
-      // Simple MP3 download - Yoto server handles transcoding
+      // MP3 download with robust YouTube extraction
       const args = [
         `ytsearch1:${searchQuery}`,
         '--extract-audio',
@@ -76,6 +91,8 @@ export async function downloadSong(
         '--no-playlist',
         '--quiet',
         '--progress',
+        '--extractor-args', 'youtube:player_client=default,-android_sdkless',
+        '--remote-components', 'ejs:github',
       ];
 
       console.log(`  Downloading: ${searchQuery}`);

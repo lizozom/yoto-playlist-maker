@@ -4,6 +4,7 @@ import {
   getAuthenticatedClient,
   listPublicIcons,
   addEntry,
+  deleteEntry,
   createPlaylist,
   deletePlaylist,
   listPlaylists,
@@ -94,6 +95,19 @@ export async function removePlaylist(cardId: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function clearPlaylistEntries(cardId: string): Promise<number> {
+  const client = await getAuthenticatedClient();
+  const content = await client.getContent(cardId);
+  const chapters = content.card.content?.chapters || [];
+
+  // Delete entries from last to first to avoid index shifting issues
+  for (let i = chapters.length - 1; i >= 0; i--) {
+    await deleteEntry(cardId, i);
+  }
+
+  return chapters.length;
 }
 
 export interface CreatePlaylistResult {
@@ -199,21 +213,22 @@ export async function uploadPlaylist(options: UploadPlaylistOptions): Promise<vo
   // Check for existing playlist with same name
   console.log(`Checking for existing playlist: ${playlistName}`);
   const existingPlaylist = await findPlaylistByName(playlistName);
-  if (existingPlaylist) {
-    console.log(`  Found existing playlist (ID: ${existingPlaylist.cardId}), deleting...`);
-    if (await removePlaylist(existingPlaylist.cardId)) {
-      console.log(`  ✓ Deleted old playlist\n`);
-    } else {
-      console.log(`  ⚠ Failed to delete old playlist, creating new one anyway\n`);
-    }
-  } else {
-    console.log(`  No existing playlist found\n`);
-  }
 
-  // Create playlist
-  console.log(`Creating playlist: ${playlistName}`);
-  const playlist = await makePlaylist(playlistName, description);
-  console.log(`✓ Created playlist (ID: ${playlist.cardId})\n`);
+  let playlistId: string;
+
+  if (existingPlaylist) {
+    console.log(`  Found existing playlist (ID: ${existingPlaylist.cardId})`);
+    console.log(`  Clearing existing entries...`);
+    const clearedCount = await clearPlaylistEntries(existingPlaylist.cardId);
+    console.log(`  ✓ Cleared ${clearedCount} entries\n`);
+    playlistId = existingPlaylist.cardId;
+  } else {
+    console.log(`  No existing playlist found`);
+    console.log(`  Creating new playlist: ${playlistName}`);
+    const playlist = await makePlaylist(playlistName, description);
+    console.log(`  ✓ Created playlist (ID: ${playlist.cardId})\n`);
+    playlistId = playlist.cardId;
+  }
 
   // Upload each track
   console.log('Uploading tracks...\n');
@@ -247,7 +262,7 @@ export async function uploadPlaylist(options: UploadPlaylistOptions): Promise<vo
 
     console.log(`[${successful + failed + 1}/${files.length}] ${title}${iconInfo}`);
 
-    const result = await addTrackToPlaylist(playlist.cardId, title, filePath, icon?.mediaId);
+    const result = await addTrackToPlaylist(playlistId, title, filePath, icon?.mediaId);
 
     if (result.success) {
       successful++;
