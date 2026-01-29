@@ -1,8 +1,26 @@
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain, BrowserWindow, app } from 'electron';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import { parse } from 'csv-parse/sync';
+
+// Get path to bundled binaries (works in both dev and production)
+function getBinPath(): string {
+  if (app.isPackaged) {
+    // Production: binaries are in resources/bin
+    return path.join(process.resourcesPath, 'bin');
+  } else {
+    // Development: binaries are in resources/{platform}
+    const platform = process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'win' : 'linux';
+    return path.join(app.getAppPath(), 'resources', platform);
+  }
+}
+
+function getBinaryPath(name: string): string {
+  const binDir = getBinPath();
+  const ext = process.platform === 'win32' ? '.exe' : '';
+  return path.join(binDir, name + ext);
+}
 import {
   checkAuth,
   getIcons,
@@ -12,7 +30,7 @@ import {
   addTrackToPlaylist,
   getRandomIcon,
   findIconByName,
-} from '../src/yoto-uploader';
+} from '../src/yoto-uploader.js';
 
 interface Song {
   name: string;
@@ -28,10 +46,32 @@ interface Playlist {
 
 function checkCommand(command: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const proc = spawn('which', [command]);
+    // First check for bundled binary
+    const bundledPath = getBinaryPath(command);
+    if (fs.existsSync(bundledPath)) {
+      resolve(true);
+      return;
+    }
+
+    // Fall back to system PATH (include common user bin directories)
+    const userBin = path.join(process.env.HOME || '', '.local', 'bin');
+    const extendedPath = `${userBin}:${process.env.PATH || ''}`;
+
+    const proc = spawn('which', [command], {
+      env: { ...process.env, PATH: extendedPath }
+    });
     proc.on('close', (code) => resolve(code === 0));
     proc.on('error', () => resolve(false));
   });
+}
+
+// Get the command to run (bundled or system)
+function getCommand(command: string): string {
+  const bundledPath = getBinaryPath(command);
+  if (fs.existsSync(bundledPath)) {
+    return bundledPath;
+  }
+  return command;
 }
 
 function sanitizeFilename(name: string): string {
@@ -159,7 +199,14 @@ export function registerIpcHandlers(mainWindow: BrowserWindow) {
           '--progress',
         ];
 
-        const proc = spawn('yt-dlp', args);
+        // Use bundled yt-dlp if available, and add bundled ffmpeg to PATH
+        const ytdlpCmd = getCommand('yt-dlp');
+        const binDir = getBinPath();
+        const extendedPath = `${binDir}:${process.env.PATH || ''}`;
+
+        const proc = spawn(ytdlpCmd, args, {
+          env: { ...process.env, PATH: extendedPath }
+        });
         let stderr = '';
 
         proc.stderr.on('data', (data) => {

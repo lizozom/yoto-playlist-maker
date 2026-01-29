@@ -2,14 +2,15 @@
   "name": "yoto-playlist-maker",
   "version": "1.0.0",
   "main": "dist/electron/main.js",
+  "type": "module",
   "scripts": {
     "start": "ts-node src/index.ts",
     "upload": "ts-node src/index.ts --upload-only",
     "build": "tsc",
     "dev": "ts-node src/index.ts",
     "check": "ts-node src/check-deps.ts",
-    "electron:dev": "concurrently \"vite\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "vite build && tsc -p tsconfig.electron.json",
+    "electron:dev": "concurrently \"vite\" \"tsc -p tsconfig.electron.json --watch\" \"tsc -p tsconfig.preload.json --watch\" \"wait-on http://localhost:5173 dist/electron/main.js && electron .\"",
+    "electron:build": "vite build && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json",
     "electron:start": "npm run electron:build && electron .",
     "electron:pack": "npm run electron:build && electron-builder --dir",
     "electron:dist": "npm run electron:build && electron-builder"
@@ -27,6 +28,7 @@
   "dependencies": {
     "@lizozom/yoto": "^0.2.1",
     "csv-parse": "^6.1.0",
+    "node-fetch": "^3.3.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

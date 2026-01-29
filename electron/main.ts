@@ -1,6 +1,11 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
-import { registerIpcHandlers } from './ipc-handlers';
+import { fileURLToPath } from 'url';
+import { registerIpcHandlers } from './ipc-handlers.js';
+
+// ESM equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
 

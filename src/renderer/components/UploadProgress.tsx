@@ -22,6 +22,7 @@ function UploadProgress({ playlistName, outputDir, songs, onComplete, onSkip }: 
   const [total, setTotal] = useState<number>(0);
   const [results, setResults] = useState<UploadResult[]>([]);
   const [isComplete, setIsComplete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const startUpload = async () => {
     setStarted(true);
@@ -50,6 +51,7 @@ function UploadProgress({ playlistName, outputDir, songs, onComplete, onSkip }: 
       setIsComplete(true);
     } catch (err) {
       console.error('Upload failed:', err);
+      setError(err instanceof Error ? err.message : 'Upload failed');
       setIsComplete(true);
     }
 
@@ -57,13 +59,15 @@ function UploadProgress({ playlistName, outputDir, songs, onComplete, onSkip }: 
   };
 
   useEffect(() => {
-    if (isComplete && results.length === total && total > 0) {
+    // Only auto-advance if upload completed without fatal error and has some successes
+    const hasSuccesses = results.some(r => r.status === 'success');
+    if (isComplete && !error && results.length >= total && total > 0 && hasSuccesses) {
       const timer = setTimeout(() => {
         onComplete(results);
       }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [isComplete, results, total, onComplete]);
+  }, [isComplete, results, total, onComplete, error]);
 
   const successCount = results.filter(r => r.status === 'success').length;
   const failedCount = results.filter(r => r.status === 'failed').length;
@@ -143,6 +147,40 @@ function UploadProgress({ playlistName, outputDir, songs, onComplete, onSkip }: 
         </div>
       </div>
 
+      {/* Error State */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <span className="text-red-500 text-xl">⚠️</span>
+            <div className="flex-1">
+              <h3 className="font-medium text-red-800">Upload Failed</h3>
+              <p className="text-sm text-red-600 mt-1">{error}</p>
+              <div className="mt-3 flex gap-3">
+                <button
+                  onClick={() => {
+                    setError(null);
+                    setIsComplete(false);
+                    setStarted(false);
+                    setResults([]);
+                    setProgress(0);
+                    setTotal(0);
+                  }}
+                  className="px-4 py-1.5 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                >
+                  Try Again
+                </button>
+                <button
+                  onClick={onSkip}
+                  className="px-4 py-1.5 text-sm text-red-600 hover:text-red-800 transition-colors"
+                >
+                  Skip Upload
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Results List */}
       <div className="border border-gray-200 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
         <table className="w-full">
@@ -180,6 +218,21 @@ function UploadProgress({ playlistName, outputDir, songs, onComplete, onSkip }: 
           </tbody>
         </table>
       </div>
+
+      {/* Manual completion button when there are failures but also successes */}
+      {isComplete && !error && successCount > 0 && failedCount > 0 && (
+        <div className="mt-6 text-center">
+          <p className="text-sm text-gray-600 mb-3">
+            {successCount} tracks uploaded, {failedCount} failed.
+          </p>
+          <button
+            onClick={() => onComplete(results)}
+            className="px-6 py-2 bg-yoto-orange text-white rounded-lg hover:bg-orange-600 transition-colors"
+          >
+            Continue to Done
+          </button>
+        </div>
+      )}
     </div>
   );
 }

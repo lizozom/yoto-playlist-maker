@@ -31,14 +31,20 @@ function DownloadProgress({ playlist, outputDir, onComplete }: DownloadProgressP
         setTotal(progressData.total);
 
         if (progressData.status !== 'downloading') {
-          setResults(prev => [
-            ...prev,
-            {
-              songName: progressData.songName,
-              status: progressData.status,
-              error: progressData.error,
-            },
-          ]);
+          setResults(prev => {
+            // Avoid duplicates (React StrictMode double-mounts in dev)
+            if (prev.some(r => r.songName === progressData.songName)) {
+              return prev;
+            }
+            return [
+              ...prev,
+              {
+                songName: progressData.songName,
+                status: progressData.status,
+                error: progressData.error,
+              },
+            ];
+          });
         }
       });
 
@@ -62,7 +68,7 @@ function DownloadProgress({ playlist, outputDir, onComplete }: DownloadProgressP
   }, [playlist, outputDir]);
 
   useEffect(() => {
-    if (isComplete && results.length === total) {
+    if (isComplete && results.length >= total) {
       // Small delay to show completion state
       const timer = setTimeout(() => {
         onComplete(results);

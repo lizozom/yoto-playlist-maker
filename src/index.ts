@@ -1,7 +1,7 @@
 import * as path from 'path';
-import { parsePlaylistCSV } from './csv-parser';
-import { downloadPlaylist } from './youtube-downloader';
-import { uploadPlaylist } from './yoto-uploader';
+import { parsePlaylistCSV } from './csv-parser.js';
+import { downloadPlaylist } from './youtube-downloader.js';
+import { uploadPlaylist } from './yoto-uploader.js';
 
 async function main() {
   const args = process.argv.slice(2);

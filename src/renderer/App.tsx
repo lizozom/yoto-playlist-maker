@@ -180,20 +180,24 @@ function App() {
             const isActive = idx === currentIdx;
             const isComplete = idx < currentIdx;
 
+            const canNavigate = isComplete && idx < currentIdx;
+
             return (
               <React.Fragment key={label}>
-                <div
+                <button
+                  onClick={() => canNavigate && setStep(stepOrder[idx])}
+                  disabled={!canNavigate}
                   className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-colors ${
                     isActive
                       ? 'bg-yoto-orange text-white'
                       : isComplete
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-gray-100 text-gray-400'
+                      ? 'bg-green-100 text-green-700 hover:bg-green-200 cursor-pointer'
+                      : 'bg-gray-100 text-gray-400 cursor-default'
                   }`}
                 >
                   {isComplete && <span>✓</span>}
                   <span>{label}</span>
-                </div>
+                </button>
                 {idx < 4 && (
                   <div
                     className={`w-8 h-0.5 ${
