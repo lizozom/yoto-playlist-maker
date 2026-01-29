@@ -152,12 +152,10 @@ export async function addTrackToPlaylist(
   iconId?: string
 ): Promise<AddEntryResult> {
   try {
-    // Use the addEntry function from yoto-cli which handles upload + transcode + add
     await addEntry(cardId, title, {
       file: audioPath,
       icon: iconId ? `yoto:#${iconId}` : undefined,
     });
-
     return { success: true, title };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

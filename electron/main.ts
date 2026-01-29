@@ -1,7 +1,13 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { webcrypto } from 'crypto';
 import { registerIpcHandlers } from './ipc-handlers.js';
+
+// Polyfill Web Crypto API for Node.js/Electron (needed by @lizozom/yoto)
+if (!globalThis.crypto) {
+  globalThis.crypto = webcrypto as unknown as Crypto;
+}
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
