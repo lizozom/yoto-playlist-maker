@@ -1,4 +1,5 @@
 import { FileUp, ListMusic, Download, Upload, FolderOpen } from 'lucide-react';
+import packageJson from '../../../../package.json';
 
 interface SidebarProps {
   activeTab: string;
@@ -43,7 +44,7 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 
       <div className="p-3 border-t border-gray-700">
         <p className="text-xs text-gray-500 text-center">
-          v1.0.0
+          v{packageJson.version}
         </p>
       </div>
     </aside>

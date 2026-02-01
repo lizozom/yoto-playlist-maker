@@ -51,15 +51,23 @@ export function registerUploadHandlers(
         shouldCancel: () => shouldCancel,
       });
 
-      mainWindow?.webContents.send('upload:complete', {
-        success: true,
-        playlistName: options.playlistName,
-      });
+      try {
+        mainWindow?.webContents.send('upload:complete', {
+          success: true,
+          playlistName: options.playlistName,
+        });
+      } catch (sendError) {
+        console.error('Error sending upload:complete event:', sendError);
+      }
 
       return { success: true };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Upload failed';
-      mainWindow?.webContents.send('upload:error', { error: errorMessage });
+      try {
+        mainWindow?.webContents.send('upload:error', { error: errorMessage });
+      } catch (sendError) {
+        console.error('Error sending upload:error event:', sendError);
+      }
       return { success: false, error: errorMessage };
     } finally {
       isUploading = false;

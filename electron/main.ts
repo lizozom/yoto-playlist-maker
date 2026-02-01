@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
 import * as path from 'path';
 import { registerPlaylistHandlers } from './ipc/playlist-handlers';
 import { registerDownloadHandlers } from './ipc/download-handlers';
@@ -73,6 +73,9 @@ function registerIpcHandlers() {
 }
 
 app.whenReady().then(() => {
+  // Remove the default menu bar
+  Menu.setApplicationMenu(null);
+
   registerIpcHandlers();
   createWindow();
 

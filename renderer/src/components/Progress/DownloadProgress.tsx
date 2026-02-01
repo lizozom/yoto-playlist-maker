@@ -2,8 +2,14 @@ import { useDownload } from '../../hooks';
 import { usePlaylistStore, useProgressStore } from '../../store';
 import { Download, X, CheckCircle, AlertCircle, Clock, FolderOpen } from 'lucide-react';
 import { useIpcInvoke } from '../../hooks';
+import { StageNavigation } from '../Layout/StageNavigation';
 
-export function DownloadProgress() {
+interface DownloadProgressProps {
+  onBack?: () => void;
+  onContinue?: () => void;
+}
+
+export function DownloadProgress({ onBack, onContinue }: DownloadProgressProps) {
   const invoke = useIpcInvoke();
   const { songs, playlistName, outputDir, setOutputDir } = usePlaylistStore();
   const { error, setError } = useProgressStore();
@@ -184,6 +190,14 @@ export function DownloadProgress() {
           </div>
         </div>
       )}
+
+      <StageNavigation
+        onBack={onBack}
+        onContinue={onContinue}
+        backLabel="Edit Playlist"
+        continueLabel="Upload"
+        continueDisabled={isDownloading}
+      />
     </div>
   );
 }

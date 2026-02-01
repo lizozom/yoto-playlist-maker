@@ -4,8 +4,14 @@ import { SongRow } from './SongRow';
 import { SongForm } from './SongForm';
 import { Song } from '../../types';
 import { Plus, Music, Edit2 } from 'lucide-react';
+import { StageNavigation } from '../Layout/StageNavigation';
 
-export function PlaylistDetail() {
+interface PlaylistDetailProps {
+  onBack?: () => void;
+  onContinue?: () => void;
+}
+
+export function PlaylistDetail({ onBack, onContinue }: PlaylistDetailProps) {
   const {
     songs,
     playlistName,
@@ -102,6 +108,14 @@ export function PlaylistDetail() {
           Add Song
         </button>
       )}
+
+      <StageNavigation
+        onBack={onBack}
+        onContinue={onContinue}
+        backLabel="Import"
+        continueLabel="Download"
+        continueDisabled={songs.length === 0 || !playlistName}
+      />
     </div>
   );
 }

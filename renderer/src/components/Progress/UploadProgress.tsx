@@ -1,8 +1,13 @@
 import { useUpload, useAuth } from '../../hooks';
 import { usePlaylistStore, useProgressStore } from '../../store';
 import { Upload, X, AlertCircle, Loader2, Cloud } from 'lucide-react';
+import { StageNavigation } from '../Layout/StageNavigation';
 
-export function UploadProgress() {
+interface UploadProgressProps {
+  onBack?: () => void;
+}
+
+export function UploadProgress({ onBack }: UploadProgressProps) {
   const { songs, playlistName, outputDir } = usePlaylistStore();
   const { error, setError } = useProgressStore();
   const { isAuthenticated } = useAuth();
@@ -136,6 +141,11 @@ export function UploadProgress() {
           <p className="text-sm">Ready to upload {songs.length} songs to Yoto</p>
         </div>
       )}
+
+      <StageNavigation
+        onBack={onBack}
+        backLabel="Download"
+      />
     </div>
   );
 }

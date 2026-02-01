@@ -1,6 +1,6 @@
 {
   "name": "yoto-playlist-maker",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "main": "dist-electron/main/index.js",
   "scripts": {
     "start": "ts-node src/index.ts",

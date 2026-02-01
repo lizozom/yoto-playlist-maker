@@ -4,14 +4,16 @@ import { useIpcInvoke } from '../../hooks';
 import { usePlaylistStore } from '../../store';
 import { Playlist } from '../../types';
 import { CheckCircle, AlertCircle, FileText } from 'lucide-react';
+import { StageNavigation } from '../Layout/StageNavigation';
 
 interface CsvImportProps {
   onImportSuccess?: () => void;
+  onContinue?: () => void;
 }
 
-export function CsvImport({ onImportSuccess }: CsvImportProps) {
+export function CsvImport({ onImportSuccess, onContinue }: CsvImportProps) {
   const invoke = useIpcInvoke();
-  const { setCurrentPlaylist } = usePlaylistStore();
+  const { setCurrentPlaylist, songs } = usePlaylistStore();
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [importedFile, setImportedFile] = useState<string | null>(null);
@@ -101,6 +103,12 @@ Baby Shark,Pinkfong,fish
 The Wheels on the Bus,Super Simple Songs,`}
         </pre>
       </div>
+
+      <StageNavigation
+        onContinue={onContinue}
+        continueLabel="Edit Playlist"
+        continueDisabled={songs.length === 0}
+      />
     </div>
   );
 }
