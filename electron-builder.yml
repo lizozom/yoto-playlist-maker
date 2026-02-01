@@ -1,0 +1,63 @@
+appId: com.yotoplaylistmaker.app
+productName: Yoto Playlist Maker
+copyright: Copyright © 2024
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - dist-electron/**/*
+  - node_modules/**/*
+  - "!node_modules/**/*.{md,ts,map}"
+  - "!node_modules/**/{test,tests,__tests__}/**"
+  - package.json
+
+extraMetadata:
+  main: dist-electron/main/index.js
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+  artifactName: ${productName}-${version}-win.${ext}
+  signAndEditExecutable: false
+  sign: null
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: build/icon.icns
+  category: public.app-category.utilities
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  icon: build/icon.png
+  category: Utility
+  artifactName: ${productName}-${version}-linux.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+asar: true
