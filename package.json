@@ -13,6 +13,7 @@
     "build:electron": "electron-vite build && electron-builder",
     "build:win": "electron-vite build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
+    "build:linux": "electron-vite build && electron-builder --linux",
     "preview": "electron-vite preview"
   },
   "keywords": [
