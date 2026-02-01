@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AuthStatus from './components/AuthStatus';
-import PlaylistImport from './components/PlaylistImport';
+import PlaylistBuilder from './components/PlaylistBuilder';
 import SongList from './components/SongList';
 import DownloadProgress from './components/DownloadProgress';
 import UploadProgress from './components/UploadProgress';
+import LoginPrompt from './components/LoginPrompt';
 
-type Step = 'import' | 'review' | 'download' | 'upload' | 'complete';
+type Step = 'build' | 'review' | 'download' | 'upload' | 'complete';
 
 interface Song {
   name: string;
   artist?: string;
   icon?: string;
   searchQuery: string;
+  localFilePath?: string;
+  needsDownload?: boolean;
 }
 
 interface Playlist {
@@ -31,45 +35,45 @@ interface UploadResult {
   error?: string;
 }
 
-function App() {
-  const [step, setStep] = useState<Step>('import');
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+function AppContent() {
+  const { auth } = useAuth();
+  const [step, setStep] = useState<Step>('build');
   const [depsOk, setDepsOk] = useState<boolean | null>(null);
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [outputDir, setOutputDir] = useState<string>('');
   const [downloadResults, setDownloadResults] = useState<DownloadResult[]>([]);
   const [uploadResults, setUploadResults] = useState<UploadResult[]>([]);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
   useEffect(() => {
-    // Check dependencies and auth on mount
+    // Check dependencies on mount
     const checkStatus = async () => {
       const deps = await window.electronAPI.checkDependencies();
       setDepsOk(deps.ytDlp && deps.ffmpeg);
-
-      const auth = await window.electronAPI.checkAuth();
-      setIsAuthenticated(auth);
     };
     checkStatus();
   }, []);
 
-  const handlePlaylistImported = async (importedPlaylist: Playlist) => {
-    setPlaylist(importedPlaylist);
-    const dir = await window.electronAPI.getOutputDir(importedPlaylist.name);
+  const handlePlaylistReady = async (readyPlaylist: Playlist) => {
+    setPlaylist(readyPlaylist);
+    const dir = await window.electronAPI.getOutputDir(readyPlaylist.name);
     setOutputDir(dir);
     setStep('review');
   };
 
   const handleStartDownload = () => {
-    setStep('download');
+    // Check if all songs are from local folder (no download needed)
+    if (playlist?.songs.every((s) => s.localFilePath)) {
+      // Skip download step entirely
+      setStep('upload');
+    } else {
+      setStep('download');
+    }
   };
 
   const handleDownloadComplete = (results: DownloadResult[]) => {
     setDownloadResults(results);
     setStep('upload');
-  };
-
-  const handleStartUpload = () => {
-    // Already in upload step, component handles this
   };
 
   const handleUploadComplete = (results: UploadResult[]) => {
@@ -82,16 +86,20 @@ function App() {
     setOutputDir('');
     setDownloadResults([]);
     setUploadResults([]);
-    setStep('import');
+    setStep('build');
   };
+
+  // Determine if we should show login prompt before upload
+  const needsLogin = auth.status === 'unauthenticated' && step === 'upload';
 
   const renderStep = () => {
     switch (step) {
-      case 'import':
+      case 'build':
         return (
-          <PlaylistImport
-            onPlaylistImported={handlePlaylistImported}
+          <PlaylistBuilder
+            onPlaylistReady={handlePlaylistReady}
             disabled={!depsOk}
+            initialPlaylist={playlist}
           />
         );
 
@@ -100,7 +108,7 @@ function App() {
           <SongList
             playlist={playlist}
             onStartDownload={handleStartDownload}
-            onBack={() => setStep('import')}
+            onBack={() => setStep('build')}
           />
         ) : null;
 
@@ -114,6 +122,31 @@ function App() {
         ) : null;
 
       case 'upload':
+        if (needsLogin) {
+          return (
+            <div className="py-12 text-center">
+              <div className="text-5xl mb-4">🔐</div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Login Required</h2>
+              <p className="text-gray-600 mb-6">
+                Please log in to your Yoto account to upload playlists.
+              </p>
+              <button
+                onClick={() => setShowLoginPrompt(true)}
+                className="px-6 py-3 bg-yoto-orange text-white rounded-lg font-medium hover:bg-orange-600 transition-colors"
+              >
+                Log in to Yoto
+              </button>
+              <div className="mt-4">
+                <button
+                  onClick={() => setStep('complete')}
+                  className="text-gray-500 hover:text-gray-700 text-sm"
+                >
+                  Skip upload
+                </button>
+              </div>
+            </div>
+          );
+        }
         return playlist ? (
           <UploadProgress
             playlistName={playlist.name}
@@ -130,14 +163,29 @@ function App() {
             <div className="text-6xl mb-4">🎉</div>
             <h2 className="text-2xl font-bold text-gray-800 mb-2">All Done!</h2>
             <p className="text-gray-600 mb-6">
-              Your playlist "{playlist?.name}" is ready on your Yoto account.
+              Your playlist "{playlist?.name}" is ready
+              {uploadResults.length > 0 ? ' on your Yoto account.' : '.'}
             </p>
             <div className="space-y-4">
               <div className="bg-gray-50 rounded-lg p-4 max-w-md mx-auto text-left">
                 <h3 className="font-medium text-gray-700 mb-2">Summary</h3>
                 <div className="text-sm text-gray-600 space-y-1">
-                  <p>Downloads: {downloadResults.filter(r => r.status === 'success').length} successful, {downloadResults.filter(r => r.status === 'skipped').length} skipped, {downloadResults.filter(r => r.status === 'failed').length} failed</p>
-                  <p>Uploads: {uploadResults.filter(r => r.status === 'success').length} successful, {uploadResults.filter(r => r.status === 'failed').length} failed</p>
+                  {downloadResults.length > 0 && (
+                    <p>
+                      Downloads: {downloadResults.filter((r) => r.status === 'success').length} successful,{' '}
+                      {downloadResults.filter((r) => r.status === 'skipped').length} skipped,{' '}
+                      {downloadResults.filter((r) => r.status === 'failed').length} failed
+                    </p>
+                  )}
+                  {uploadResults.length > 0 && (
+                    <p>
+                      Uploads: {uploadResults.filter((r) => r.status === 'success').length} successful,{' '}
+                      {uploadResults.filter((r) => r.status === 'failed').length} failed
+                    </p>
+                  )}
+                  {downloadResults.length === 0 && uploadResults.length === 0 && (
+                    <p>Playlist created with {playlist?.songs.length} songs</p>
+                  )}
                 </div>
               </div>
               <button
@@ -155,6 +203,10 @@ function App() {
     }
   };
 
+  // Get step labels - use 'Build' instead of 'Import' for the new flow
+  const stepLabels = ['Build', 'Review', 'Download', 'Upload', 'Done'];
+  const stepOrder: Step[] = ['build', 'review', 'download', 'upload', 'complete'];
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-blue-50">
       {/* Header / Drag Region */}
@@ -164,22 +216,17 @@ function App() {
             <span className="text-3xl">🎵</span>
             <h1 className="text-xl font-bold text-gray-800">Yoto Playlist Maker</h1>
           </div>
-          <AuthStatus
-            isAuthenticated={isAuthenticated}
-            depsOk={depsOk}
-          />
+          <AuthStatus depsOk={depsOk} />
         </div>
       </header>
 
       {/* Progress Steps */}
       <div className="max-w-4xl mx-auto px-6 py-4">
         <div className="flex items-center justify-center gap-2 text-sm">
-          {['Import', 'Review', 'Download', 'Upload', 'Done'].map((label, idx) => {
-            const stepOrder: Step[] = ['import', 'review', 'download', 'upload', 'complete'];
+          {stepLabels.map((label, idx) => {
             const currentIdx = stepOrder.indexOf(step);
             const isActive = idx === currentIdx;
             const isComplete = idx < currentIdx;
-
             const canNavigate = isComplete && idx < currentIdx;
 
             return (
@@ -200,9 +247,7 @@ function App() {
                 </button>
                 {idx < 4 && (
                   <div
-                    className={`w-8 h-0.5 ${
-                      idx < currentIdx ? 'bg-green-300' : 'bg-gray-200'
-                    }`}
+                    className={`w-8 h-0.5 ${idx < currentIdx ? 'bg-green-300' : 'bg-gray-200'}`}
                   />
                 )}
               </React.Fragment>
@@ -217,7 +262,20 @@ function App() {
           {renderStep()}
         </div>
       </main>
+
+      {/* Login Prompt Modal */}
+      {showLoginPrompt && (
+        <LoginPrompt onClose={() => setShowLoginPrompt(false)} />
+      )}
     </div>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

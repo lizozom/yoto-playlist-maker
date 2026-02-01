@@ -5,6 +5,8 @@ export interface Song {
   artist?: string;
   icon?: string;
   searchQuery: string;
+  localFilePath?: string;
+  needsDownload?: boolean;
 }
 
 export interface Playlist {
@@ -40,14 +42,34 @@ export interface YotoIcon {
   publicTags?: string[];
 }
 
+export interface FolderScanResult {
+  songs: Song[];
+  folderPath: string;
+}
+
+export interface AuthStatus {
+  authenticated: boolean;
+  username?: string;
+  error?: string;
+}
+
 export interface ElectronAPI {
   // File operations
   openFileDialog: () => Promise<string | null>;
   parseCSV: (filePath: string) => Promise<Playlist>;
 
+  // Folder operations
+  selectFolder: () => Promise<string | null>;
+  scanFolder: (folderPath: string) => Promise<FolderScanResult>;
+
   // Dependency checks
   checkDependencies: () => Promise<DependencyStatus>;
   checkAuth: () => Promise<boolean>;
+
+  // Authentication
+  login: () => Promise<boolean>;
+  logout: () => Promise<void>;
+  getAuthStatus: () => Promise<AuthStatus>;
 
   // Download operations
   startDownload: (playlist: Playlist, outputDir: string) => Promise<void>;
@@ -69,9 +91,18 @@ const api: ElectronAPI = {
   openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
   parseCSV: (filePath: string) => ipcRenderer.invoke('csv:parse', filePath),
 
+  // Folder operations
+  selectFolder: () => ipcRenderer.invoke('folder:select'),
+  scanFolder: (folderPath: string) => ipcRenderer.invoke('folder:scan', folderPath),
+
   // Dependency checks
   checkDependencies: () => ipcRenderer.invoke('deps:check'),
   checkAuth: () => ipcRenderer.invoke('auth:check'),
+
+  // Authentication
+  login: () => ipcRenderer.invoke('auth:login'),
+  logout: () => ipcRenderer.invoke('auth:logout'),
+  getAuthStatus: () => ipcRenderer.invoke('auth:status'),
 
   // Download operations
   startDownload: (playlist: Playlist, outputDir: string) =>

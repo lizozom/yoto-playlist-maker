@@ -15,48 +15,69 @@ interface UploadProgressProps {
   onSkip: () => void;
 }
 
+function getStatusDisplay(status: UploadResult['status'], error?: string): React.ReactNode {
+  if (status === 'success') {
+    return <span className="text-green-600">Done</span>;
+  }
+  return <span className="text-red-600" title={error}>Failed</span>;
+}
+
+const INITIAL_STATE = {
+  started: false,
+  currentTrack: '',
+  progress: 0,
+  total: 0,
+  results: [] as UploadResult[],
+  isComplete: false,
+  error: null as string | null,
+};
+
 function UploadProgress({ playlistName, outputDir, songs, onComplete, onSkip }: UploadProgressProps) {
-  const [started, setStarted] = useState(false);
-  const [currentTrack, setCurrentTrack] = useState<string>('');
-  const [progress, setProgress] = useState<number>(0);
-  const [total, setTotal] = useState<number>(0);
-  const [results, setResults] = useState<UploadResult[]>([]);
-  const [isComplete, setIsComplete] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState(INITIAL_STATE);
+  const { started, currentTrack, progress, total, results, isComplete, error } = state;
 
-  const startUpload = async () => {
-    setStarted(true);
+  function resetState(): void {
+    setState(INITIAL_STATE);
+  }
 
-    // Subscribe to progress updates
+  async function startUpload(): Promise<void> {
+    setState(prev => ({ ...prev, started: true }));
+
     const unsubscribe = window.electronAPI.onUploadProgress((progressData: UploadProgressType) => {
-      setCurrentTrack(progressData.trackName);
-      setProgress(progressData.current);
-      setTotal(progressData.total);
-
-      if (progressData.status !== 'uploading') {
-        setResults(prev => [
+      setState(prev => {
+        const newState = {
           ...prev,
-          {
+          currentTrack: progressData.trackName,
+          progress: progressData.current,
+          total: progressData.total,
+        };
+
+        if (progressData.status !== 'uploading') {
+          newState.results = [...prev.results, {
             trackName: progressData.trackName,
             status: progressData.status,
             error: progressData.error,
-          },
-        ]);
-      }
+          }];
+        }
+
+        return newState;
+      });
     });
 
-    // Start the upload
     try {
       await window.electronAPI.startUpload(playlistName, outputDir, songs);
-      setIsComplete(true);
+      setState(prev => ({ ...prev, isComplete: true }));
     } catch (err) {
       console.error('Upload failed:', err);
-      setError(err instanceof Error ? err.message : 'Upload failed');
-      setIsComplete(true);
+      setState(prev => ({
+        ...prev,
+        isComplete: true,
+        error: err instanceof Error ? err.message : 'Upload failed',
+      }));
     }
 
-    return unsubscribe;
-  };
+    unsubscribe?.();
+  }
 
   useEffect(() => {
     // Only auto-advance if upload completed without fatal error and has some successes
@@ -157,14 +178,7 @@ function UploadProgress({ playlistName, outputDir, songs, onComplete, onSkip }: 
               <p className="text-sm text-red-600 mt-1">{error}</p>
               <div className="mt-3 flex gap-3">
                 <button
-                  onClick={() => {
-                    setError(null);
-                    setIsComplete(false);
-                    setStarted(false);
-                    setResults([]);
-                    setProgress(0);
-                    setTotal(0);
-                  }}
+                  onClick={resetState}
                   className="px-4 py-1.5 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
                 >
                   Try Again
@@ -197,12 +211,7 @@ function UploadProgress({ playlistName, outputDir, songs, onComplete, onSkip }: 
                 <td className="px-4 py-2 text-gray-500">{idx + 1}</td>
                 <td className="px-4 py-2 text-gray-800">{result.trackName}</td>
                 <td className="px-4 py-2 text-right">
-                  {result.status === 'success' && (
-                    <span className="text-green-600">✓ Done</span>
-                  )}
-                  {result.status === 'failed' && (
-                    <span className="text-red-600" title={result.error}>✗ Failed</span>
-                  )}
+                  {getStatusDisplay(result.status, result.error)}
                 </td>
               </tr>
             ))}

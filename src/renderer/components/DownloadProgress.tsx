@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Playlist, DownloadProgress as DownloadProgressType } from '../types';
 
 interface DownloadResult {
@@ -13,74 +13,77 @@ interface DownloadProgressProps {
   onComplete: (results: DownloadResult[]) => void;
 }
 
+function getStatusDisplay(status: DownloadResult['status'], error?: string): React.ReactNode {
+  switch (status) {
+    case 'success':
+      return <span className="text-green-600">Done</span>;
+    case 'skipped':
+      return <span className="text-gray-500">Skipped</span>;
+    case 'failed':
+      return <span className="text-red-600" title={error}>Failed</span>;
+  }
+}
+
 function DownloadProgress({ playlist, outputDir, onComplete }: DownloadProgressProps) {
-  const [currentSong, setCurrentSong] = useState<string>('');
-  const [progress, setProgress] = useState<number>(0);
-  const [total, setTotal] = useState<number>(playlist.songs.length);
+  const [currentSong, setCurrentSong] = useState('');
+  const [total, setTotal] = useState(playlist.songs.length);
   const [results, setResults] = useState<DownloadResult[]>([]);
-  const [isComplete, setIsComplete] = useState(false);
+  const downloadStarted = useRef(false);
+
+  // Progress is based on completed results, not current track number
+  const completedCount = results.length;
+  const isComplete = completedCount >= total && total > 0;
 
   useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
+    // Prevent double-start in React StrictMode
+    if (downloadStarted.current) return;
+    downloadStarted.current = true;
 
-    const startDownload = async () => {
-      // Subscribe to progress updates
-      unsubscribe = window.electronAPI.onDownloadProgress((progressData: DownloadProgressType) => {
-        setCurrentSong(progressData.songName);
-        setProgress(progressData.current);
-        setTotal(progressData.total);
+    // Subscribe to progress updates
+    const unsubscribe = window.electronAPI.onDownloadProgress((progressData: DownloadProgressType) => {
+      setCurrentSong(progressData.songName);
+      setTotal(progressData.total);
 
-        if (progressData.status !== 'downloading') {
-          setResults(prev => {
-            // Avoid duplicates (React StrictMode double-mounts in dev)
-            if (prev.some(r => r.songName === progressData.songName)) {
-              return prev;
-            }
-            return [
-              ...prev,
-              {
-                songName: progressData.songName,
-                status: progressData.status,
-                error: progressData.error,
-              },
-            ];
-          });
-        }
-      });
-
-      // Start the download
-      try {
-        await window.electronAPI.startDownload(playlist, outputDir);
-        setIsComplete(true);
-      } catch (err) {
-        console.error('Download failed:', err);
-        setIsComplete(true);
+      if (progressData.status !== 'downloading') {
+        setResults(prev => {
+          // Avoid duplicates
+          if (prev.some(r => r.songName === progressData.songName)) {
+            return prev;
+          }
+          return [...prev, {
+            songName: progressData.songName,
+            status: progressData.status,
+            error: progressData.error,
+          }];
+        });
       }
-    };
+    });
 
-    startDownload();
+    // Start the download
+    window.electronAPI.startDownload(playlist, outputDir).catch(err => {
+      console.error('Download error:', err);
+    });
 
     return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      unsubscribe?.();
+      downloadStarted.current = false;
     };
   }, [playlist, outputDir]);
 
+  // Trigger onComplete after a delay once everything is done
   useEffect(() => {
-    if (isComplete && results.length >= total) {
-      // Small delay to show completion state
-      const timer = setTimeout(() => {
-        onComplete(results);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [isComplete, results, total, onComplete]);
+    if (!isComplete || results.length === 0) return;
+
+    const timer = setTimeout(() => {
+      onComplete(results);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [isComplete, results, onComplete]);
 
   const successCount = results.filter(r => r.status === 'success').length;
   const skippedCount = results.filter(r => r.status === 'skipped').length;
   const failedCount = results.filter(r => r.status === 'failed').length;
-  const percentage = total > 0 ? Math.round((progress / total) * 100) : 0;
+  const percentage = total > 0 ? Math.round((completedCount / total) * 100) : 0;
 
   return (
     <div className="py-6">
@@ -95,7 +98,7 @@ function DownloadProgress({ playlist, outputDir, onComplete }: DownloadProgressP
       <div className="mb-8">
         <div className="flex justify-between text-sm text-gray-600 mb-2">
           <span>Progress</span>
-          <span>{progress} / {total} ({percentage}%)</span>
+          <span>{completedCount} / {total} ({percentage}%)</span>
         </div>
         <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
           <div
@@ -148,15 +151,7 @@ function DownloadProgress({ playlist, outputDir, onComplete }: DownloadProgressP
                 <td className="px-4 py-2 text-gray-500">{idx + 1}</td>
                 <td className="px-4 py-2 text-gray-800">{result.songName}</td>
                 <td className="px-4 py-2 text-right">
-                  {result.status === 'success' && (
-                    <span className="text-green-600">✓ Done</span>
-                  )}
-                  {result.status === 'skipped' && (
-                    <span className="text-gray-500">⏭ Skipped</span>
-                  )}
-                  {result.status === 'failed' && (
-                    <span className="text-red-600" title={result.error}>✗ Failed</span>
-                  )}
+                  {getStatusDisplay(result.status, result.error)}
                 </td>
               </tr>
             ))}

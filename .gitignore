@@ -15,3 +15,8 @@ playlists/*
 *.rpm
 *.exe
 *.msi
+
+# Bundled binaries (download separately per platform)
+resources/linux/
+resources/mac/
+resources/win/

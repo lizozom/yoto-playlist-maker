@@ -3,6 +3,8 @@ export interface Song {
   artist?: string;
   icon?: string;
   searchQuery: string;
+  localFilePath?: string;  // For imported files from local folder
+  needsDownload?: boolean; // Calculated before download step
 }
 
 export interface Playlist {
@@ -38,15 +40,46 @@ export interface YotoIcon {
   publicTags?: string[];
 }
 
+export interface FolderScanResult {
+  songs: Song[];
+  folderPath: string;
+}
+
+export interface AuthStatus {
+  authenticated: boolean;
+  username?: string;
+  error?: string;
+}
+
 export interface ElectronAPI {
+  // File operations
   openFileDialog: () => Promise<string | null>;
   parseCSV: (filePath: string) => Promise<Playlist>;
+
+  // Folder operations
+  selectFolder: () => Promise<string | null>;
+  scanFolder: (folderPath: string) => Promise<FolderScanResult>;
+
+  // Dependency checks
   checkDependencies: () => Promise<DependencyStatus>;
   checkAuth: () => Promise<boolean>;
+
+  // Authentication
+  login: () => Promise<boolean>;
+  logout: () => Promise<void>;
+  getAuthStatus: () => Promise<AuthStatus>;
+
+  // Download operations
   startDownload: (playlist: Playlist, outputDir: string) => Promise<void>;
   onDownloadProgress: (callback: (progress: DownloadProgress) => void) => () => void;
+
+  // Upload operations
   startUpload: (playlistName: string, outputDir: string, songs: Song[]) => Promise<void>;
   onUploadProgress: (callback: (progress: UploadProgress) => void) => () => void;
+
+  // Icons
   getIcons: (tag?: string) => Promise<YotoIcon[]>;
+
+  // Utility
   getOutputDir: (playlistName: string) => Promise<string>;
 }

@@ -1,26 +1,8 @@
-import { ipcMain, BrowserWindow, app } from 'electron';
+import { ipcMain, BrowserWindow, app, dialog } from 'electron';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import { parse } from 'csv-parse/sync';
-
-// Get path to bundled binaries (works in both dev and production)
-function getBinPath(): string {
-  if (app.isPackaged) {
-    // Production: binaries are in resources/bin
-    return path.join(process.resourcesPath, 'bin');
-  } else {
-    // Development: binaries are in resources/{platform}
-    const platform = process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'win' : 'linux';
-    return path.join(app.getAppPath(), 'resources', platform);
-  }
-}
-
-function getBinaryPath(name: string): string {
-  const binDir = getBinPath();
-  const ext = process.platform === 'win32' ? '.exe' : '';
-  return path.join(binDir, name + ext);
-}
 import {
   checkAuth,
   getIcons,
@@ -31,12 +13,34 @@ import {
   getRandomIcon,
   findIconByName,
 } from '../src/yoto-uploader.js';
+import {
+  startLogin,
+  performLogout,
+  getAuthStatus,
+} from './auth-server.js';
+
+// Get path to bundled binaries (works in both dev and production)
+function getBinPath(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'bin');
+  }
+  const platform = process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'win' : 'linux';
+  return path.join(app.getAppPath(), 'resources', platform);
+}
+
+function getBinaryPath(name: string): string {
+  const binDir = getBinPath();
+  const ext = process.platform === 'win32' ? '.exe' : '';
+  return path.join(binDir, name + ext);
+}
 
 interface Song {
   name: string;
   artist?: string;
   icon?: string;
   searchQuery: string;
+  localFilePath?: string;
+  needsDownload?: boolean;
 }
 
 interface Playlist {
@@ -81,7 +85,58 @@ function sanitizeFilename(name: string): string {
     .substring(0, 80);
 }
 
-export function registerIpcHandlers(mainWindow: BrowserWindow) {
+// Parse audio filename into song metadata
+function parseAudioFilename(filename: string): { name: string; artist?: string } {
+  // Remove extension
+  const nameWithoutExt = filename.replace(/\.(mp3|m4a|wav|opus|flac|aac)$/i, '');
+
+  // Try pattern: "01. Artist - Song Name" or "01 - Artist - Song Name"
+  const numberedPattern = /^\d+[\.\-\s]+(.*)$/;
+  const match = nameWithoutExt.match(numberedPattern);
+  const cleanName = match ? match[1].trim() : nameWithoutExt;
+
+  // Try pattern: "Artist - Song Name"
+  const artistSongPattern = /^(.+?)\s*[-–—]\s*(.+)$/;
+  const artistMatch = cleanName.match(artistSongPattern);
+
+  if (artistMatch) {
+    return {
+      artist: artistMatch[1].trim(),
+      name: artistMatch[2].trim(),
+    };
+  }
+
+  return { name: cleanName };
+}
+
+// Supported audio extensions
+const AUDIO_EXTENSIONS = ['.mp3', '.m4a', '.wav', '.opus', '.flac', '.aac'];
+
+function buildSearchQuery(name: string, artist?: string): string {
+  return artist ? `${artist} ${name}` : name;
+}
+
+export function registerIpcHandlers(mainWindow: BrowserWindow): void {
+  function sendDownloadProgress(data: {
+    current: number;
+    total: number;
+    songName: string;
+    status: 'downloading' | 'success' | 'failed' | 'skipped';
+    filename?: string;
+    error?: string;
+  }): void {
+    mainWindow.webContents.send('download:progress', data);
+  }
+
+  function sendUploadProgress(data: {
+    current: number;
+    total: number;
+    trackName: string;
+    status: 'uploading' | 'success' | 'failed';
+    error?: string;
+  }): void {
+    mainWindow.webContents.send('upload:progress', data);
+  }
   // Check dependencies (yt-dlp, ffmpeg)
   ipcMain.handle('deps:check', async () => {
     const [ytDlp, ffmpeg] = await Promise.all([
@@ -91,9 +146,28 @@ export function registerIpcHandlers(mainWindow: BrowserWindow) {
     return { ytDlp, ffmpeg };
   });
 
-  // Check Yoto authentication
+  // Check Yoto authentication (quick check)
   ipcMain.handle('auth:check', async () => {
     return await checkAuth();
+  });
+
+  // Login to Yoto (OAuth device flow)
+  ipcMain.handle('auth:login', async () => {
+    const result = await startLogin((status) => {
+      // Send status updates to renderer
+      mainWindow.webContents.send('auth:status-update', status);
+    });
+    return result.success;
+  });
+
+  // Logout from Yoto
+  ipcMain.handle('auth:logout', async () => {
+    await performLogout();
+  });
+
+  // Get detailed auth status
+  ipcMain.handle('auth:status', async () => {
+    return await getAuthStatus();
   });
 
   // Parse CSV file
@@ -122,19 +196,55 @@ export function registerIpcHandlers(mainWindow: BrowserWindow) {
         throw new Error('Each row must have a song_name, name, or title column');
       }
 
-      const searchQuery = artist ? `${artist} ${name}` : name;
-
       return {
         name,
         artist: artist || undefined,
         icon: icon || undefined,
-        searchQuery,
+        searchQuery: buildSearchQuery(name, artist),
       };
     });
 
     return {
       name: playlistName,
       songs,
+    };
+  });
+
+  // Select folder dialog
+  ipcMain.handle('folder:select', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: 'Select Music Folder',
+    });
+    return result.filePaths[0] || null;
+  });
+
+  // Scan folder for audio files
+  ipcMain.handle('folder:scan', async (_event, folderPath: string) => {
+    const absolutePath = path.resolve(folderPath);
+
+    if (!fs.existsSync(absolutePath)) {
+      throw new Error(`Folder not found: ${absolutePath}`);
+    }
+
+    const files = fs.readdirSync(absolutePath)
+      .filter((f) => AUDIO_EXTENSIONS.some((ext) => f.toLowerCase().endsWith(ext)))
+      .sort();
+
+    const songs: Song[] = files.map((file) => {
+      const { name, artist } = parseAudioFilename(file);
+      return {
+        name,
+        artist,
+        searchQuery: buildSearchQuery(name, artist),
+        localFilePath: path.join(absolutePath, file),
+        needsDownload: false,
+      };
+    });
+
+    return {
+      songs,
+      folderPath: absolutePath,
     };
   });
 
@@ -166,8 +276,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow) {
       const expectedFile = path.join(outputDir, `${paddedNumber}. ${sanitizedName}.mp3`);
       const outputTemplate = path.join(outputDir, `${paddedNumber}. ${sanitizedName}.%(ext)s`);
 
-      // Send initial progress
-      mainWindow.webContents.send('download:progress', {
+      sendDownloadProgress({
         current: trackNumber,
         total: songs.length,
         songName: displayName,
@@ -176,7 +285,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow) {
 
       // Skip if file already exists
       if (fs.existsSync(expectedFile)) {
-        mainWindow.webContents.send('download:progress', {
+        sendDownloadProgress({
           current: trackNumber,
           total: songs.length,
           songName: displayName,
@@ -226,8 +335,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow) {
         });
       });
 
-      // Send completion progress
-      mainWindow.webContents.send('download:progress', {
+      sendDownloadProgress({
         current: trackNumber,
         total: songs.length,
         songName: displayName,
@@ -270,26 +378,22 @@ export function registerIpcHandlers(mainWindow: BrowserWindow) {
         .replace(/^\d+[\.\-]\s*/, '')
         .replace(/\.(opus|mp3)$/, '');
 
-      // Send initial progress
-      mainWindow.webContents.send('upload:progress', {
+      sendUploadProgress({
         current: i + 1,
         total: files.length,
         trackName: title,
         status: 'uploading',
       });
 
-      // Get icon
+      // Get icon - use song's specified icon or fall back to random music icon
       const songInfo = songs?.[i];
-      let icon = songInfo?.icon ? findIconByName(allIcons, songInfo.icon) : undefined;
-      if (!icon) {
-        icon = getRandomIcon(musicIcons);
-      }
+      const icon = songInfo?.icon
+        ? findIconByName(allIcons, songInfo.icon) || getRandomIcon(musicIcons)
+        : getRandomIcon(musicIcons);
 
-      // Upload track
       const result = await addTrackToPlaylist(playlist.cardId, title, filePath, icon?.mediaId);
 
-      // Send completion progress
-      mainWindow.webContents.send('upload:progress', {
+      sendUploadProgress({
         current: i + 1,
         total: files.length,
         trackName: title,
