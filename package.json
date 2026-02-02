@@ -1,13 +1,20 @@
 {
   "name": "yoto-playlist-maker",
-  "version": "1.0.0",
-  "main": "dist/index.js",
+  "version": "1.1.0",
+  "main": "dist-electron/main/index.js",
   "scripts": {
     "start": "ts-node src/index.ts",
     "upload": "ts-node src/index.ts --upload-only",
     "build": "tsc",
     "dev": "ts-node src/index.ts",
-    "check": "ts-node src/check-deps.ts"
+    "check": "ts-node src/check-deps.ts",
+    "yoto:login": "node scripts/yoto-login.mjs",
+    "dev:electron": "electron-vite dev",
+    "build:electron": "electron-vite build && electron-builder",
+    "build:win": "electron-vite build && electron-builder --win --publish never",
+    "build:mac": "electron-vite build && electron-builder --mac --publish never",
+    "build:linux": "electron-vite build && electron-builder --linux --publish never",
+    "preview": "electron-vite preview"
   },
   "keywords": [
     "yoto",
@@ -20,9 +27,26 @@
   "description": "Create custom playlists for Yoto players from YouTube",
   "dependencies": {
     "@lizozom/yoto": "^0.2.1",
-    "@types/node": "^25.0.10",
     "csv-parse": "^6.1.0",
+    "lucide-react": "^0.469.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-dropzone": "^14.3.5",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^5.0.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
   }
 }

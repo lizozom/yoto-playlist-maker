@@ -7,6 +7,7 @@ export interface DownloadOptions {
   trackNumber: number;
   artist?: string;
   bitrate?: number;
+  totalTracks?: number;
 }
 
 export interface DownloadResult {
@@ -15,6 +16,19 @@ export interface DownloadResult {
   error?: string;
   skipped?: boolean;
 }
+
+export interface DownloadProgress {
+  songIndex: number;
+  totalSongs: number;
+  songName: string;
+  artist?: string;
+  status: 'pending' | 'downloading' | 'converting' | 'complete' | 'error' | 'skipped';
+  percent?: number;
+  message?: string;
+  error?: string;
+}
+
+export type ProgressCallback = (progress: DownloadProgress) => void;
 
 function sanitizeFilename(name: string): string {
   return name
@@ -33,9 +47,23 @@ async function sleep(ms: number): Promise<void> {
 export async function downloadSong(
   searchQuery: string,
   songName: string,
-  options: DownloadOptions
+  options: DownloadOptions,
+  onProgress?: ProgressCallback
 ): Promise<DownloadResult> {
-  const { outputDir, trackNumber, artist } = options;
+  const { outputDir, trackNumber, artist, totalTracks } = options;
+
+  const emitProgress = (status: DownloadProgress['status'], extra?: Partial<DownloadProgress>) => {
+    if (onProgress) {
+      onProgress({
+        songIndex: trackNumber,
+        totalSongs: totalTracks || 1,
+        songName,
+        artist,
+        status,
+        ...extra,
+      });
+    }
+  };
 
   // Ensure output directory exists
   if (!fs.existsSync(outputDir)) {
@@ -51,6 +79,7 @@ export async function downloadSong(
 
   // Skip if file already exists (exact match)
   if (fs.existsSync(expectedFile)) {
+    emitProgress('skipped', { message: 'Already exists', percent: 100 });
     return {
       success: true,
       filename: path.basename(expectedFile),
@@ -66,12 +95,15 @@ export async function downloadSong(
   );
 
   if (matchingFile) {
+    emitProgress('skipped', { message: 'Already exists', percent: 100 });
     return {
       success: true,
       filename: matchingFile,
       skipped: true,
     };
   }
+
+  emitProgress('downloading', { percent: 0, message: 'Starting download...' });
 
   // Retry loop
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -109,28 +141,45 @@ export async function downloadSong(
         const line = data.toString().trim();
         if (line) {
           console.log(`    ${line}`);
+          // Parse progress percentage from yt-dlp output
+          const percentMatch = line.match(/(\d+\.?\d*)%/);
+          if (percentMatch) {
+            const percent = parseFloat(percentMatch[1]);
+            const isConverting = line.toLowerCase().includes('convert') ||
+                                 line.toLowerCase().includes('ffmpeg') ||
+                                 line.toLowerCase().includes('post');
+            emitProgress(isConverting ? 'converting' : 'downloading', {
+              percent,
+              message: line
+            });
+          }
         }
       });
 
       proc.on('close', (code) => {
         if (code === 0) {
           const expectedFile = outputTemplate.replace('.%(ext)s', '.mp3');
+          emitProgress('complete', { percent: 100, message: path.basename(expectedFile) });
           resolve({
             success: true,
             filename: path.basename(expectedFile),
           });
         } else {
+          const errorMsg = stderr || `yt-dlp exited with code ${code}`;
+          emitProgress('error', { error: errorMsg });
           resolve({
             success: false,
-            error: stderr || `yt-dlp exited with code ${code}`,
+            error: errorMsg,
           });
         }
       });
 
       proc.on('error', (err) => {
+        const errorMsg = `Failed to spawn yt-dlp: ${err.message}`;
+        emitProgress('error', { error: errorMsg });
         resolve({
           success: false,
-          error: `Failed to spawn yt-dlp: ${err.message}`,
+          error: errorMsg,
         });
       });
     });
@@ -152,7 +201,8 @@ export async function downloadSong(
 
 export async function downloadPlaylist(
   songs: Array<{ name: string; artist?: string; searchQuery: string }>,
-  outputDir: string
+  outputDir: string,
+  onProgress?: ProgressCallback
 ): Promise<{ successful: number; failed: number; skipped: number; results: DownloadResult[] }> {
   const results: DownloadResult[] = [];
   let successful = 0;
@@ -168,7 +218,8 @@ export async function downloadPlaylist(
       outputDir,
       trackNumber: i + 1,
       artist: song.artist,
-    });
+      totalTracks: songs.length,
+    }, onProgress);
 
     results.push(result);
 

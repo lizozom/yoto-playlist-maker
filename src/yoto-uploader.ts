@@ -1,17 +1,15 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import {
-  getAuthenticatedClient,
-  listPublicIcons,
-  addEntry,
-  deleteEntry,
-  createPlaylist,
-  deletePlaylist,
-  listPlaylists,
-  getPlaylist,
-  loadConfig,
-  type YotoClient,
-} from '@lizozom/yoto';
+
+// Lazy load the @lizozom/yoto module (ESM-only package)
+let yotoModule: typeof import('@lizozom/yoto') | null = null;
+
+async function getYotoModule() {
+  if (!yotoModule) {
+    yotoModule = await import('@lizozom/yoto');
+  }
+  return yotoModule;
+}
 
 interface YotoIcon {
   mediaId: string;
@@ -23,6 +21,7 @@ let cachedIcons: YotoIcon[] | null = null;
 
 export async function checkAuth(): Promise<boolean> {
   try {
+    const { loadConfig } = await getYotoModule();
     const config = await loadConfig();
     return !!config?.accessToken;
   } catch {
@@ -33,6 +32,7 @@ export async function checkAuth(): Promise<boolean> {
 export async function getIcons(tag?: string): Promise<YotoIcon[]> {
   if (!cachedIcons) {
     try {
+      const { getAuthenticatedClient } = await getYotoModule();
       const client = await getAuthenticatedClient();
       const response = await client.getPublicIcons();
       cachedIcons = response.displayIcons.map((icon) => ({
@@ -71,6 +71,7 @@ interface YotoPlaylist {
 
 export async function getPlaylists(): Promise<YotoPlaylist[]> {
   try {
+    const { getAuthenticatedClient } = await getYotoModule();
     const client = await getAuthenticatedClient();
     const response = await client.listContent();
     return response.cards.map((card: any) => ({
@@ -89,6 +90,7 @@ export async function findPlaylistByName(name: string): Promise<YotoPlaylist | u
 
 export async function removePlaylist(cardId: string): Promise<boolean> {
   try {
+    const { getAuthenticatedClient } = await getYotoModule();
     const client = await getAuthenticatedClient();
     await client.deleteContent(cardId);
     return true;
@@ -98,6 +100,7 @@ export async function removePlaylist(cardId: string): Promise<boolean> {
 }
 
 export async function clearPlaylistEntries(cardId: string): Promise<number> {
+  const { getAuthenticatedClient, deleteEntry } = await getYotoModule();
   const client = await getAuthenticatedClient();
   const content = await client.getContent(cardId);
   const chapters = content.card.content?.chapters || [];
@@ -116,6 +119,7 @@ export interface CreatePlaylistResult {
 }
 
 export async function makePlaylist(title: string, description?: string): Promise<CreatePlaylistResult> {
+  const { getAuthenticatedClient } = await getYotoModule();
   const client = await getAuthenticatedClient();
 
   const response = await client.createContent({
@@ -152,6 +156,7 @@ export async function addTrackToPlaylist(
   iconId?: string
 ): Promise<AddEntryResult> {
   try {
+    const { addEntry } = await getYotoModule();
     // Use the addEntry function from yoto-cli which handles upload + transcode + add
     await addEntry(cardId, title, {
       file: audioPath,
@@ -171,73 +176,142 @@ export interface SongInfo {
   icon?: string;
 }
 
+export interface UploadProgress {
+  stage: 'init' | 'auth' | 'icons' | 'playlist' | 'uploading' | 'complete' | 'error';
+  songIndex?: number;
+  totalSongs?: number;
+  songName?: string;
+  percent?: number;
+  message?: string;
+  error?: string;
+}
+
+export type UploadProgressCallback = (progress: UploadProgress) => void;
+
 export interface UploadPlaylistOptions {
   playlistName: string;
   outputDir: string;
   songs?: SongInfo[];
   description?: string;
+  onProgress?: UploadProgressCallback;
+  shouldCancel?: () => boolean;
+}
+
+// Safe console log that won't crash on encoding issues
+function safeLog(message: string): void {
+  try {
+    console.log(message);
+  } catch {
+    // Ignore logging errors
+  }
 }
 
 export async function uploadPlaylist(options: UploadPlaylistOptions): Promise<void> {
-  const { playlistName, outputDir, songs, description } = options;
+  const { playlistName, outputDir, songs, description, onProgress, shouldCancel } = options;
+
+  const emit = (progress: UploadProgress) => {
+    if (onProgress) {
+      try {
+        onProgress(progress);
+      } catch (err) {
+        console.error('Error in progress callback:', err);
+      }
+    }
+  };
+
+  const checkCancel = () => {
+    if (shouldCancel?.()) {
+      emit({ stage: 'error', error: 'Upload cancelled' });
+      throw new Error('Upload cancelled');
+    }
+  };
 
   // Check authentication
-  console.log('Checking Yoto authentication...');
+  safeLog('Checking Yoto authentication...');
+  emit({ stage: 'auth', message: 'Checking authentication...' });
   if (!await checkAuth()) {
-    console.log('\n⚠ Not logged in. Please run: yoto login\n');
+    safeLog('\n⚠ Not logged in. Please run: yoto login\n');
+    emit({ stage: 'error', error: 'Authentication required. Run yoto login first.' });
     throw new Error('Authentication required. Run yoto login first.');
   }
-  console.log('✓ Authenticated\n');
+  safeLog('✓ Authenticated\n');
+
+  checkCancel();
+
+  // Construct the full playlist directory path (sanitized same as download)
+  const sanitizedPlaylistName = playlistName.toLowerCase().replace(/\s+/g, '-');
+  const playlistDir = path.join(outputDir, sanitizedPlaylistName);
 
   // Get list of audio files (opus or mp3)
-  const files = fs.readdirSync(outputDir)
+  emit({ stage: 'init', message: 'Scanning audio files...' });
+
+  if (!fs.existsSync(playlistDir)) {
+    emit({ stage: 'error', error: `Playlist directory not found: ${playlistDir}` });
+    throw new Error(`Playlist directory not found: ${playlistDir}`);
+  }
+
+  const files = fs.readdirSync(playlistDir)
     .filter(f => f.endsWith('.opus') || f.endsWith('.mp3'))
     .sort();
 
   if (files.length === 0) {
-    throw new Error(`No audio files found in ${outputDir}`);
+    emit({ stage: 'error', error: `No audio files found in ${playlistDir}` });
+    throw new Error(`No audio files found in ${playlistDir}`);
   }
 
-  console.log(`Found ${files.length} tracks to upload\n`);
+  checkCancel();
+
+  safeLog(`Found ${files.length} tracks to upload\n`);
 
   // Fetch icons
-  console.log('Fetching icons...');
+  safeLog('Fetching icons...');
+  emit({ stage: 'icons', message: 'Fetching icons...' });
   const allIcons = await getIcons();
   const musicIcons = await getIcons('music');
   if (allIcons.length > 0) {
-    console.log(`✓ Found ${allIcons.length} icons (${musicIcons.length} music)\n`);
+    safeLog(`✓ Found ${allIcons.length} icons (${musicIcons.length} music)\n`);
   } else {
-    console.log('⚠ No icons found, entries will use default icon\n');
+    safeLog('⚠ No icons found, entries will use default icon\n');
   }
 
+  checkCancel();
+
   // Check for existing playlist with same name
-  console.log(`Checking for existing playlist: ${playlistName}`);
+  safeLog(`Checking for existing playlist: ${playlistName}`);
+  emit({ stage: 'playlist', message: `Looking for playlist "${playlistName}"...` });
   const existingPlaylist = await findPlaylistByName(playlistName);
 
   let playlistId: string;
 
   if (existingPlaylist) {
-    console.log(`  Found existing playlist (ID: ${existingPlaylist.cardId})`);
-    console.log(`  Clearing existing entries...`);
+    safeLog(`  Found existing playlist (ID: ${existingPlaylist.cardId})`);
+    safeLog(`  Clearing existing entries...`);
+    emit({ stage: 'playlist', message: 'Clearing existing entries...' });
     const clearedCount = await clearPlaylistEntries(existingPlaylist.cardId);
-    console.log(`  ✓ Cleared ${clearedCount} entries\n`);
+    safeLog(`  ✓ Cleared ${clearedCount} entries\n`);
     playlistId = existingPlaylist.cardId;
   } else {
-    console.log(`  No existing playlist found`);
-    console.log(`  Creating new playlist: ${playlistName}`);
+    safeLog(`  No existing playlist found`);
+    safeLog(`  Creating new playlist: ${playlistName}`);
+    emit({ stage: 'playlist', message: `Creating playlist "${playlistName}"...` });
     const playlist = await makePlaylist(playlistName, description);
-    console.log(`  ✓ Created playlist (ID: ${playlist.cardId})\n`);
+    safeLog(`  ✓ Created playlist (ID: ${playlist.cardId})\n`);
     playlistId = playlist.cardId;
   }
 
+  checkCancel();
+
   // Upload each track
-  console.log('Uploading tracks...\n');
+  safeLog('Uploading tracks...\n');
   let successful = 0;
   let failed = 0;
 
   for (let i = 0; i < files.length; i++) {
+    // Check for cancellation before each upload
+    checkCancel();
+
     const file = files[i];
-    const filePath = path.join(outputDir, file);
+    const filePath = path.join(playlistDir, file);
     // Parse filename like "01. Artist - Song Name.opus" or "01-old-format.mp3"
     const title = file
       .replace(/^\d+[\.\-]\s*/, '')  // Remove track number prefix
@@ -250,7 +324,7 @@ export async function uploadPlaylist(options: UploadPlaylistOptions): Promise<vo
     if (songInfo?.icon) {
       icon = findIconByName(allIcons, songInfo.icon);
       if (!icon) {
-        console.log(`  ⚠ Icon "${songInfo.icon}" not found, using random`);
+        safeLog(`  ⚠ Icon "${songInfo.icon}" not found, using random`);
       }
     }
 
@@ -260,25 +334,39 @@ export async function uploadPlaylist(options: UploadPlaylistOptions): Promise<vo
 
     const iconInfo = icon ? ` (icon: ${icon.title})` : '';
 
-    console.log(`[${successful + failed + 1}/${files.length}] ${title}${iconInfo}`);
+    safeLog(`[${successful + failed + 1}/${files.length}] ${title}${iconInfo}`);
+    emit({
+      stage: 'uploading',
+      songIndex: i + 1,
+      totalSongs: files.length,
+      songName: title,
+      percent: Math.round((i / files.length) * 100),
+      message: `Uploading: ${title}`,
+    });
 
     const result = await addTrackToPlaylist(playlistId, title, filePath, icon?.mediaId);
 
     if (result.success) {
       successful++;
-      console.log(`  ✓ Uploaded\n`);
+      safeLog(`  ✓ Uploaded\n`);
     } else {
       failed++;
-      console.log(`  ✗ Failed: ${result.error}\n`);
+      safeLog(`  ✗ Failed: ${result.error}\n`);
     }
   }
 
   // Summary
-  console.log('═'.repeat(40));
-  console.log('Upload Complete!');
-  console.log(`  ✓ Successful: ${successful}`);
+  safeLog('═'.repeat(40));
+  safeLog('Upload Complete!');
+  safeLog(`  ✓ Successful: ${successful}`);
   if (failed > 0) {
-    console.log(`  ✗ Failed: ${failed}`);
+    safeLog(`  ✗ Failed: ${failed}`);
   }
-  console.log(`\nPlaylist "${playlistName}" is ready on your Yoto account!`);
+  safeLog(`\nPlaylist "${playlistName}" is ready on your Yoto account!`);
+
+  emit({
+    stage: 'complete',
+    percent: 100,
+    message: `Upload complete! ${successful} tracks uploaded${failed > 0 ? `, ${failed} failed` : ''}.`,
+  });
 }
