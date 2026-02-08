@@ -1,0 +1,44 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, adding_tests]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Install ffmpeg
+        run: choco install ffmpeg -y
+
+      - name: Install yt-dlp
+        run: choco install yt-dlp -y
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Verify external dependencies
+        run: npm run check
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Run tests
+        run: npm test

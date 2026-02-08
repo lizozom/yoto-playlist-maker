@@ -30,7 +30,7 @@ export interface DownloadProgress {
 
 export type ProgressCallback = (progress: DownloadProgress) => void;
 
-function sanitizeFilename(name: string): string {
+export function sanitizeFilename(name: string): string {
   return name
     .replace(/[\/\\:*?"<>|]/g, '') // Remove filesystem-unsafe chars
     .trim()

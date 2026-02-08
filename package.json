@@ -8,6 +8,9 @@
     "build": "tsc",
     "dev": "ts-node src/index.ts",
     "check": "ts-node src/check-deps.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "yoto:login": "node scripts/yoto-login.mjs",
     "dev:electron": "electron-vite dev",
     "build:electron": "electron-vite build && electron-builder",
@@ -47,6 +50,7 @@
     "tailwindcss": "^3.4.17",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "vitest": "^4.0.18"
   }
 }
