@@ -43,6 +43,13 @@ jobs:
       - name: Run tests with coverage
         run: npm run test:coverage
 
+      - name: Coverage report
+        uses: davelosert/vitest-coverage-report-action@v2
+        if: always()
+        with:
+          json-summary-path: './coverage/coverage-summary.json'
+          json-final-path: './coverage/coverage-final.json'
+
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
