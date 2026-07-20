@@ -58,10 +58,15 @@ export function getRandomIcon(icons: YotoIcon[]): YotoIcon | undefined {
 
 export function findIconByName(icons: YotoIcon[], name: string): YotoIcon | undefined {
   const lowerName = name.toLowerCase();
-  let icon = icons.find(i => i.title?.toLowerCase() === lowerName);
-  if (icon) return icon;
-  icon = icons.find(i => i.title?.toLowerCase().includes(lowerName));
-  return icon;
+  // Match order: exact title, exact tag, title substring, tag substring. Tags
+  // matter because some icons have no title at all (e.g. the pineapple icon,
+  // tagged food/fruit/pineapple), so title-only matching can never reach them.
+  return (
+    icons.find(i => i.title?.toLowerCase() === lowerName) ||
+    icons.find(i => i.publicTags?.some(t => t.toLowerCase() === lowerName)) ||
+    icons.find(i => i.title?.toLowerCase().includes(lowerName)) ||
+    icons.find(i => i.publicTags?.some(t => t.toLowerCase().includes(lowerName)))
+  );
 }
 
 interface YotoPlaylist {
@@ -238,9 +243,8 @@ export async function uploadPlaylist(options: UploadPlaylistOptions): Promise<vo
 
   checkCancel();
 
-  // Construct the full playlist directory path (sanitized same as download)
-  const sanitizedPlaylistName = playlistName.toLowerCase().replace(/\s+/g, '-');
-  const playlistDir = path.join(outputDir, sanitizedPlaylistName);
+  // Use outputDir directly - it already points to the playlist directory
+  const playlistDir = outputDir;
 
   // Get list of audio files (opus or mp3)
   emit({ stage: 'init', message: 'Scanning audio files...' });

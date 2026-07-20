@@ -113,14 +113,20 @@ export async function downloadSong(
     }
 
     const result = await new Promise<DownloadResult>((resolve) => {
-      // MP3 download with robust YouTube extraction
+      // MP3 download with robust YouTube extraction.
+      // A direct video URL is used as-is; otherwise search several candidates
+      // and skip unavailable ones (blocked/region-locked videos), stopping
+      // after the first that downloads successfully.
+      const isDirectUrl = /^https?:\/\//i.test(searchQuery);
+      const target = isDirectUrl ? searchQuery : `ytsearch10:${searchQuery}`;
       const args = [
-        `ytsearch1:${searchQuery}`,
+        target,
         '--extract-audio',
         '--audio-format', 'mp3',
         '--audio-quality', '192K',
         '--output', outputTemplate,
-        '--no-playlist',
+        '--max-downloads', '1',
+        '--ignore-errors',
         '--quiet',
         '--progress',
         '--extractor-args', 'youtube:player_client=default,-android_sdkless',
@@ -157,12 +163,14 @@ export async function downloadSong(
       });
 
       proc.on('close', (code) => {
-        if (code === 0) {
-          const expectedFile = outputTemplate.replace('.%(ext)s', '.mp3');
-          emitProgress('complete', { percent: 100, message: path.basename(expectedFile) });
+        // --max-downloads exits with code 101 on success, so rely on the file
+        // actually existing rather than the exit code.
+        const finalFile = outputTemplate.replace('.%(ext)s', '.mp3');
+        if (fs.existsSync(finalFile)) {
+          emitProgress('complete', { percent: 100, message: path.basename(finalFile) });
           resolve({
             success: true,
-            filename: path.basename(expectedFile),
+            filename: path.basename(finalFile),
           });
         } else {
           const errorMsg = stderr || `yt-dlp exited with code ${code}`;
