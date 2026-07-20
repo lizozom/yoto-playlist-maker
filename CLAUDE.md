@@ -172,12 +172,10 @@ npm run dev      # Run with ts-node (development)
 
 ## Authentication
 
-The tool uses the `@lizozom/yoto` npm package (>= 0.3.0) for Yoto API access, via
+The tool uses the `@lizozom/yoto` npm package (>= 0.3.2) for Yoto API access, via
 its PKCE loopback flow.
 
-**One-time setup** — you need your own Yoto OAuth client. The client id that
-`@lizozom/yoto` used to ship with is a shared community client that Yoto has
-since disabled, so logging in with it fails with "Activation Denied".
+**One-time setup** — you need your own Yoto OAuth client:
 
 1. Create a **public** client at https://dashboard.yoto.dev/
 2. Register the redirect URI `http://127.0.0.1:8787/callback`
@@ -190,10 +188,12 @@ Then log in:
 npm run yoto:login
 ```
 
-This opens your browser and stores credentials locally in `~/.yoto/config.json`.
+This opens your browser and stores credentials locally in `~/.yoto-cli/config.json`.
 The `checkAuth()` function in `yoto-uploader.ts` verifies authentication before
-uploads. Note that the `@lizozom/yoto` CLI binary is Linux-only — on macOS and
-Windows use `npm run yoto:login`, not `npx @lizozom/yoto login`.
+uploads.
+
+Prefer `npm run yoto:login` over `npx @lizozom/yoto login` — the script loads
+`.env`, so it picks up `YOTO_CLIENT_ID` automatically.
 
 ## Configuration
 

@@ -5,11 +5,7 @@ import { parse } from 'csv-parse/sync';
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
-
-// Lazy-load the ESM-only Yoto package (same pattern as the uploader).
-async function getYoto() {
-  return import('@lizozom/yoto');
-}
+import { getAuthenticatedClient } from '@lizozom/yoto';
 
 interface CatalogIcon {
   title: string;
@@ -20,7 +16,6 @@ interface CatalogIcon {
 // title, e.g. several "Cat"). We match the CSV `icon` column against titles, so
 // the title is what matters; tags are merged to give Claude richer context.
 async function fetchCatalog(): Promise<CatalogIcon[]> {
-  const { getAuthenticatedClient } = await getYoto();
   const client = await getAuthenticatedClient();
   const res = await client.getPublicIcons();
   const byTitle = new Map<string, Set<string>>();

@@ -1,15 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
-
-// Lazy load the @lizozom/yoto module (ESM-only package)
-let yotoModule: typeof import('@lizozom/yoto') | null = null;
-
-async function getYotoModule() {
-  if (!yotoModule) {
-    yotoModule = await import('@lizozom/yoto');
-  }
-  return yotoModule;
-}
+import {
+  addEntry,
+  deleteEntry,
+  getAuthenticatedClient,
+  loadConfig,
+} from '@lizozom/yoto';
 
 interface YotoIcon {
   mediaId: string;
@@ -21,7 +17,6 @@ let cachedIcons: YotoIcon[] | null = null;
 
 export async function checkAuth(): Promise<boolean> {
   try {
-    const { loadConfig } = await getYotoModule();
     const config = await loadConfig();
     return !!config?.accessToken;
   } catch {
@@ -32,7 +27,6 @@ export async function checkAuth(): Promise<boolean> {
 export async function getIcons(tag?: string): Promise<YotoIcon[]> {
   if (!cachedIcons) {
     try {
-      const { getAuthenticatedClient } = await getYotoModule();
       const client = await getAuthenticatedClient();
       const response = await client.getPublicIcons();
       cachedIcons = response.displayIcons.map((icon) => ({
@@ -76,7 +70,6 @@ interface YotoPlaylist {
 
 export async function getPlaylists(): Promise<YotoPlaylist[]> {
   try {
-    const { getAuthenticatedClient } = await getYotoModule();
     const client = await getAuthenticatedClient();
     const response = await client.listContent();
     return response.cards.map((card: any) => ({
@@ -95,7 +88,6 @@ export async function findPlaylistByName(name: string): Promise<YotoPlaylist | u
 
 export async function removePlaylist(cardId: string): Promise<boolean> {
   try {
-    const { getAuthenticatedClient } = await getYotoModule();
     const client = await getAuthenticatedClient();
     await client.deleteContent(cardId);
     return true;
@@ -105,7 +97,6 @@ export async function removePlaylist(cardId: string): Promise<boolean> {
 }
 
 export async function clearPlaylistEntries(cardId: string): Promise<number> {
-  const { getAuthenticatedClient, deleteEntry } = await getYotoModule();
   const client = await getAuthenticatedClient();
   const content = await client.getContent(cardId);
   const chapters = content.card.content?.chapters || [];
@@ -124,7 +115,6 @@ export interface CreatePlaylistResult {
 }
 
 export async function makePlaylist(title: string, description?: string): Promise<CreatePlaylistResult> {
-  const { getAuthenticatedClient } = await getYotoModule();
   const client = await getAuthenticatedClient();
 
   const response = await client.createContent({
@@ -161,7 +151,6 @@ export async function addTrackToPlaylist(
   iconId?: string
 ): Promise<AddEntryResult> {
   try {
-    const { addEntry } = await getYotoModule();
     // Use the addEntry function from yoto-cli which handles upload + transcode + add
     await addEntry(cardId, title, {
       file: audioPath,
