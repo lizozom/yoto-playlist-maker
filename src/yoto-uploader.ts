@@ -1,15 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
-
-// Lazy load the @lizozom/yoto module (ESM-only package)
-let yotoModule: typeof import('@lizozom/yoto') | null = null;
-
-async function getYotoModule() {
-  if (!yotoModule) {
-    yotoModule = await import('@lizozom/yoto');
-  }
-  return yotoModule;
-}
+import {
+  addEntry,
+  deleteEntry,
+  getAuthenticatedClient,
+  loadConfig,
+} from '@lizozom/yoto';
 
 interface YotoIcon {
   mediaId: string;
@@ -21,7 +17,6 @@ let cachedIcons: YotoIcon[] | null = null;
 
 export async function checkAuth(): Promise<boolean> {
   try {
-    const { loadConfig } = await getYotoModule();
     const config = await loadConfig();
     return !!config?.accessToken;
   } catch {
@@ -32,7 +27,6 @@ export async function checkAuth(): Promise<boolean> {
 export async function getIcons(tag?: string): Promise<YotoIcon[]> {
   if (!cachedIcons) {
     try {
-      const { getAuthenticatedClient } = await getYotoModule();
       const client = await getAuthenticatedClient();
       const response = await client.getPublicIcons();
       cachedIcons = response.displayIcons.map((icon) => ({
@@ -58,10 +52,15 @@ export function getRandomIcon(icons: YotoIcon[]): YotoIcon | undefined {
 
 export function findIconByName(icons: YotoIcon[], name: string): YotoIcon | undefined {
   const lowerName = name.toLowerCase();
-  let icon = icons.find(i => i.title?.toLowerCase() === lowerName);
-  if (icon) return icon;
-  icon = icons.find(i => i.title?.toLowerCase().includes(lowerName));
-  return icon;
+  // Match order: exact title, exact tag, title substring, tag substring. Tags
+  // matter because some icons have no title at all (e.g. the pineapple icon,
+  // tagged food/fruit/pineapple), so title-only matching can never reach them.
+  return (
+    icons.find(i => i.title?.toLowerCase() === lowerName) ||
+    icons.find(i => i.publicTags?.some(t => t.toLowerCase() === lowerName)) ||
+    icons.find(i => i.title?.toLowerCase().includes(lowerName)) ||
+    icons.find(i => i.publicTags?.some(t => t.toLowerCase().includes(lowerName)))
+  );
 }
 
 interface YotoPlaylist {
@@ -71,7 +70,6 @@ interface YotoPlaylist {
 
 export async function getPlaylists(): Promise<YotoPlaylist[]> {
   try {
-    const { getAuthenticatedClient } = await getYotoModule();
     const client = await getAuthenticatedClient();
     const response = await client.listContent();
     return response.cards.map((card: any) => ({
@@ -90,7 +88,6 @@ export async function findPlaylistByName(name: string): Promise<YotoPlaylist | u
 
 export async function removePlaylist(cardId: string): Promise<boolean> {
   try {
-    const { getAuthenticatedClient } = await getYotoModule();
     const client = await getAuthenticatedClient();
     await client.deleteContent(cardId);
     return true;
@@ -100,7 +97,6 @@ export async function removePlaylist(cardId: string): Promise<boolean> {
 }
 
 export async function clearPlaylistEntries(cardId: string): Promise<number> {
-  const { getAuthenticatedClient, deleteEntry } = await getYotoModule();
   const client = await getAuthenticatedClient();
   const content = await client.getContent(cardId);
   const chapters = content.card.content?.chapters || [];
@@ -119,7 +115,6 @@ export interface CreatePlaylistResult {
 }
 
 export async function makePlaylist(title: string, description?: string): Promise<CreatePlaylistResult> {
-  const { getAuthenticatedClient } = await getYotoModule();
   const client = await getAuthenticatedClient();
 
   const response = await client.createContent({
@@ -156,7 +151,6 @@ export async function addTrackToPlaylist(
   iconId?: string
 ): Promise<AddEntryResult> {
   try {
-    const { addEntry } = await getYotoModule();
     // Use the addEntry function from yoto-cli which handles upload + transcode + add
     await addEntry(cardId, title, {
       file: audioPath,
@@ -238,9 +232,8 @@ export async function uploadPlaylist(options: UploadPlaylistOptions): Promise<vo
 
   checkCancel();
 
-  // Construct the full playlist directory path (sanitized same as download)
-  const sanitizedPlaylistName = playlistName.toLowerCase().replace(/\s+/g, '-');
-  const playlistDir = path.join(outputDir, sanitizedPlaylistName);
+  // Use outputDir directly - it already points to the playlist directory
+  const playlistDir = outputDir;
 
   // Get list of audio files (opus or mp3)
   emit({ stage: 'init', message: 'Scanning audio files...' });

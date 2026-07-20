@@ -5,6 +5,8 @@ output/
 *.log
 .DS_Store
 .claude/
+.env
+.env.local
 NUL
 playlists/*
 !playlists/Example Playlist.csv

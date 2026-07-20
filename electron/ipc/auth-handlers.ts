@@ -1,8 +1,6 @@
 import { IpcMain, shell, BrowserWindow } from 'electron';
 import { spawn } from 'child_process';
 
-const CLIENT_ID = 'A1c4Noo77MdN7CB8QjUOvwtdyMZnSwkd';
-
 export function registerAuthHandlers(ipcMain: IpcMain, getMainWindow: () => BrowserWindow | null) {
   // Check if user is authenticated with Yoto
   ipcMain.handle('auth:check', async () => {
@@ -19,58 +17,36 @@ export function registerAuthHandlers(ipcMain: IpcMain, getMainWindow: () => Brow
     }
   });
 
-  // Attempt to login to Yoto - custom implementation that opens browser
+  // Log in to Yoto via the package's PKCE loopback flow. The client id comes
+  // from YOTO_CLIENT_ID (create a public client at https://dashboard.yoto.dev/
+  // and register http://127.0.0.1:8787/callback as a redirect URI).
   ipcMain.handle('auth:login', async () => {
     try {
-      // Import YotoClient and saveConfig from @lizozom/yoto
-      const { YotoClient, saveConfig } = await import('@lizozom/yoto');
+      const { login } = await import('@lizozom/yoto');
 
-      const client = new YotoClient({ clientId: CLIENT_ID });
-
-      // Start device flow to get the verification URL
-      const deviceCode = await client.initDeviceFlow();
-
-      // Open browser with the verification URL
-      const verificationUrl = deviceCode.verification_uri_complete;
-      console.log(`Opening browser: ${verificationUrl}`);
-      await shell.openExternal(verificationUrl);
-
-      // Notify renderer that browser was opened
-      const mainWindow = getMainWindow();
-      mainWindow?.webContents.send('auth:browser-opened', {
-        url: verificationUrl,
-        userCode: deviceCode.user_code,
-      });
-
-      // Poll for token
-      const pollInterval = (deviceCode.interval || 5) * 1000;
-      const expiresAt = Date.now() + deviceCode.expires_in * 1000;
-
-      while (Date.now() < expiresAt) {
-        await new Promise((resolve) => setTimeout(resolve, pollInterval));
-
-        try {
-          const tokens = await client.pollForToken(deviceCode.device_code);
-
-          // Save config
-          await saveConfig({
-            clientId: CLIENT_ID,
-            accessToken: tokens.access_token,
-            refreshToken: tokens.refresh_token,
-          });
-
-          return { success: true };
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          if (message === 'authorization_pending' || message === 'slow_down') {
-            // Still waiting for user to authorize, continue polling
-            continue;
-          }
-          throw err;
-        }
+      const clientId = process.env.YOTO_CLIENT_ID?.trim();
+      if (!clientId) {
+        return {
+          success: false,
+          error:
+            'YOTO_CLIENT_ID is not set. Create a public client at ' +
+            'https://dashboard.yoto.dev/ and set YOTO_CLIENT_ID.',
+        };
       }
 
-      return { success: false, error: 'Authorization timed out. Please try again.' };
+      // login() opens the browser + runs a local callback server itself. We hook
+      // onAuthorizeUrl only to open the URL in the user's browser and mirror it
+      // to the renderer so the UI can show a "waiting for authorization" state.
+      await login({
+        clientId,
+        onAuthorizeUrl: (url) => {
+          console.log(`Opening browser: ${url}`);
+          void shell.openExternal(url);
+          getMainWindow()?.webContents.send('auth:browser-opened', { url });
+        },
+      });
+
+      return { success: true };
     } catch (error) {
       console.error('Login error:', error);
       return {

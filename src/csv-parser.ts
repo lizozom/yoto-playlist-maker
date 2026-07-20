@@ -6,6 +6,8 @@ export interface Song {
   name: string;
   artist?: string;
   icon?: string;
+  // Either a YouTube search query, or a direct video URL when the CSV
+  // provides a `url` column (used to pull an exact video, not a search hit).
   searchQuery: string;
 }
 
@@ -34,12 +36,15 @@ export function parsePlaylistCSV(csvPath: string): Playlist {
     const name = record.song_name || record.name || record.title || '';
     const artist = record.artist || '';
     const icon = record.icon || '';
+    const url = record.url || '';
 
     if (!name) {
       throw new Error('Each row must have a song_name, name, or title column');
     }
 
-    const searchQuery = artist ? `${artist} ${name}` : name;
+    // A direct URL takes priority over a name-based search, so we grab the
+    // exact video instead of whatever the search happens to surface.
+    const searchQuery = url || (artist ? `${artist} ${name}` : name);
 
     return {
       name,

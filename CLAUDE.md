@@ -16,6 +16,10 @@ yoto-playlist-maker/
 ├── src/
 │   ├── index.ts              # Main entry point
 │   ├── csv-parser.ts         # Parse CSV input files
+│   ├── config.ts             # Run config (selects the audio source)
+│   ├── sources/              # Pluggable audio sources (youtube, youtube-music)
+│   ├── ytmusic-search.ts     # Resolve official YouTube Music "Art Track" audio
+│   ├── icon-picker.ts        # AI icon curation (Claude picks best Yoto icon per song)
 │   ├── youtube-downloader.ts # Download audio from YouTube
 │   ├── yoto-uploader.ts      # Upload to Yoto account
 │   └── cover-generator.ts    # (Future) Generate cover images
@@ -83,8 +87,11 @@ Baby Shark,Pinkfong,fish
 ## Usage
 
 ```bash
-# Download songs only
+# Download songs (defaults to official YouTube Music audio)
 npm start -- playlists/bedtime-songs.csv
+
+# Force plain YouTube (uses the CSV url / a normal search)
+npm start -- playlists/bedtime-songs.csv --source youtube
 
 # Download and upload to Yoto
 npm start -- playlists/bedtime-songs.csv --upload
@@ -92,9 +99,42 @@ npm start -- playlists/bedtime-songs.csv --upload
 # Upload only (songs already downloaded)
 npm run upload -- playlists/bedtime-songs.csv
 
+# Curate icons: Claude picks the best Yoto icon per song and writes them
+# back into the CSV's `icon` column (needs ANTHROPIC_API_KEY). Review, then upload.
+npm run icons -- playlists/bedtime-songs.csv
+
 # Process all CSVs in playlists folder
 npm start -- --all
 ```
+
+### Icon Curation (`npm run icons`)
+
+`src/icon-picker.ts` fetches the full Yoto public-icon catalog (title + tags),
+asks Claude (default `claude-haiku-4-5`, override with `ANTHROPIC_MODEL`) to pick
+the single best-fitting icon per song, and writes the chosen titles back into the
+CSV's `icon` column. It only edits the `icon` column; review the result and then
+run a normal `--upload`. Note: the uploader matches the CSV `icon` value against
+icon **titles** (exact, then substring), so the curator writes exact titles.
+
+### Audio Source
+
+Where audio is resolved and downloaded from is a configurable **source**:
+
+| Source | Selector | What you get |
+|--------|----------|--------------|
+| `youtube-music` (default) | `--music` or `--source youtube-music` | The official "Art Track" — the same master distributed to Spotify/Apple, so real album/EP versions instead of fan or live-looping video uploads. **Falls back to the YouTube target when there's no confident match.** |
+| `youtube` | `--source youtube` | The CSV `url`, or the top result of a plain YouTube search |
+
+The default is `youtube-music` (try official audio first, fall back to YouTube).
+Override the default with the `AUDIO_SOURCE` env var (`youtube-music` or `youtube`).
+
+> Note: in `youtube-music` mode a confident YouTube Music match **overrides** an
+> explicit CSV `url`. For playlists where the exact `url` matters (specific
+> score cuts, particular live versions), run them with `--source youtube`.
+
+Sources are pluggable — each lives in `src/sources/` and implements a small
+`AudioSource` interface (`resolve(song) → { query }`); download mechanics are
+shared, so adding a source (Bandcamp, Spotify, local files) is just another module.
 
 ## Output Structure
 
@@ -115,6 +155,7 @@ output/
 - **Runtime**: Node.js 18+
 - **Language**: TypeScript
 - **YouTube Download**: yt-dlp (with deno runtime)
+- **Official audio lookup**: ytmusic-api (YouTube Music "Art Track" resolver)
 - **CSV Parsing**: csv-parse
 - **Yoto Upload**: @lizozom/yoto package
 - **Cover Generation**: (Future) AI image generation API
@@ -131,24 +172,52 @@ npm run dev      # Run with ts-node (development)
 
 ## Authentication
 
-The tool uses the `@lizozom/yoto` npm package for Yoto API access. Authentication is handled via:
+The tool uses the `@lizozom/yoto` npm package (>= 0.3.2) for Yoto API access, via
+its PKCE loopback flow.
+
+**One-time setup** — you need your own Yoto OAuth client:
+
+1. Create a **public** client at https://dashboard.yoto.dev/
+2. Register the redirect URI `http://127.0.0.1:8787/callback`
+3. Enable "Allow Offline Access" (so you get refresh tokens)
+4. Put the client id in `.env` as `YOTO_CLIENT_ID` (see `.env.example`)
+
+Then log in:
 
 ```bash
-npx @lizozom/yoto login
+npm run yoto:login
 ```
 
-This stores credentials locally in `~/.yoto/config.json`. The `checkAuth()` function in `yoto-uploader.ts` verifies authentication before uploads.
+This opens your browser and stores credentials locally in `~/.yoto-cli/config.json`.
+The `checkAuth()` function in `yoto-uploader.ts` verifies authentication before
+uploads.
+
+Prefer `npm run yoto:login` over `npx @lizozom/yoto login` — the script loads
+`.env`, so it picks up `YOTO_CLIENT_ID` automatically.
 
 ## Configuration
 
-Environment variables (optional):
+Env vars are loaded from `.env` (via `dotenv`). Copy `.env.example` to `.env` to
+get started.
 
 ```bash
+# Your Yoto OAuth public client_id — required for `npm run yoto:login`
+# and for the Electron app's login. See Authentication above.
+YOTO_CLIENT_ID=
+
 # Custom output directory
 OUTPUT_DIR=./my-playlists
 
 # Audio quality (default: 192)
 AUDIO_BITRATE=320
+
+# Default audio source: youtube-music (default) or youtube
+AUDIO_SOURCE=youtube-music
+
+# For `npm run icons` (AI icon curation)
+ANTHROPIC_API_KEY=
+# Optional model override (default: claude-haiku-4-5)
+ANTHROPIC_MODEL=claude-haiku-4-5
 
 # (Future) Cover generation API key
 COVER_API_KEY=
